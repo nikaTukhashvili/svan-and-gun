@@ -1,0 +1,20 @@
+{
+  "scrapByEnemy": {
+    "kaji": 1,
+    "ali": 2,
+    "ochopintre": 4,
+    "rokapi": 3,
+    "devi_brute": 8
+  },
+  "eliteScrapMult": 5,
+  "scrapPieces": { "small": 1, "medium": 5, "large": 20 },
+  "silver": { "killChance": 0.05, "perPickup": 1, "elite": 10, "boss": 50 },
+  "kubdari": { "killChance": 0.01, "heal": 30 },
+  "huntingHorn": { "killChance": 0.004 },
+  "crate": {
+    "hp": 20,
+    "contents": { "kubdari": 0.5, "scrap": 0.35, "silver": 0.15 },
+    "scrapValue": 10
+  },
+  "powderBarrel": { "hp": 30, "damage": 60, "radius": 3 }
+}

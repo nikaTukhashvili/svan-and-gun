@@ -1,0 +1,42 @@
+{
+  "id": "devi_chieftain",
+  "name": "Devi Chieftain",
+  "hp": 4000,
+  "defence": 2,
+  "speed": 1.5,
+  "contactDamage": 25,
+  "radius": 1.5,
+  "visual": { "color": "#5d4037", "shape": "hexagon" },
+  "enrageAfterSec": 180,
+  "enrageDamageMult": 1.5,
+  "retakeMomentSec": 2,
+  "phases": [
+    { "fromHp": 1, "attacks": ["slam"], "cooldownSec": 3, "speedMult": 1, "slamRepeat": 1 },
+    {
+      "fromHp": 0.67,
+      "attacks": ["slam", "boulder", "summon"],
+      "cooldownSec": 2.5,
+      "speedMult": 1,
+      "slamRepeat": 1
+    },
+    {
+      "fromHp": 0.34,
+      "attacks": ["slam", "boulder", "summon"],
+      "cooldownSec": 1.6,
+      "speedMult": 1.3,
+      "slamRepeat": 2
+    }
+  ],
+  "attacks": {
+    "slam": { "damage": 20, "ringSpeed": 6, "ringMaxRadius": 8, "ringThickness": 0.6, "windupSec": 0.6 },
+    "boulder": {
+      "damage": 25,
+      "telegraphSec": 1,
+      "impactRadius": 1.5,
+      "rubbleRadius": 1,
+      "rubbleSec": 10,
+      "throwRange": 12
+    },
+    "summon": { "enemy": "kaji", "count": 8, "radius": 3 }
+  }
+}

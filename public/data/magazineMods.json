@@ -1,0 +1,116 @@
+[
+  {
+    "id": "extended_mag",
+    "name": "Extended Mag",
+    "hooks": ["stats"],
+    "description": "Bigger magazine.",
+    "levels": [
+      {
+        "magBonus": 0.5
+      },
+      {
+        "magBonus": 0.75
+      },
+      {
+        "magBonus": 1.0
+      }
+    ]
+  },
+  {
+    "id": "quick_hands",
+    "name": "Quick Hands",
+    "hooks": ["stats"],
+    "description": "Faster reload.",
+    "levels": [
+      {
+        "reloadReduction": 0.3
+      },
+      {
+        "reloadReduction": 0.4
+      },
+      {
+        "reloadReduction": 0.5
+      }
+    ]
+  },
+  {
+    "id": "grenade_mag",
+    "name": "Grenade Mag",
+    "hooks": ["onMagazineEmpty"],
+    "description": "The empty magazine is thrown as a grenade: {damage} damage in {radius} units.",
+    "levels": [
+      {
+        "damage": 80,
+        "radius": 2.5,
+        "throwRange": 6,
+        "fuseSec": 0.35
+      },
+      {
+        "damage": 120,
+        "radius": 2.5,
+        "throwRange": 6,
+        "fuseSec": 0.35
+      },
+      {
+        "damage": 160,
+        "radius": 2.5,
+        "throwRange": 6,
+        "fuseSec": 0.35
+      }
+    ]
+  },
+  {
+    "id": "last_round",
+    "name": "Last Round",
+    "hooks": ["onLastRound"],
+    "description": "The last bullet in the magazine deals x{damageMult} damage.",
+    "levels": [
+      {
+        "damageMult": 3
+      },
+      {
+        "damageMult": 4
+      },
+      {
+        "damageMult": 5
+      }
+    ]
+  },
+  {
+    "id": "shock_reload",
+    "name": "Shock Reload",
+    "hooks": ["onReloadStart"],
+    "description": "Reloading pushes back enemies within {radius} units.",
+    "levels": [
+      {
+        "radius": 3,
+        "knockback": 3
+      },
+      {
+        "radius": 4,
+        "knockback": 3
+      },
+      {
+        "radius": 5,
+        "knockback": 3
+      }
+    ]
+  },
+  {
+    "id": "scavenger",
+    "name": "Scavenger",
+    "hooks": ["onKill"],
+    "description": "Each kill has a chance to put 1 round back in the magazine.",
+    "levels": [
+      {
+        "chance": 0.1
+      },
+      {
+        "chance": 0.15
+      },
+      {
+        "chance": 0.2
+      }
+    ]
+  }
+]

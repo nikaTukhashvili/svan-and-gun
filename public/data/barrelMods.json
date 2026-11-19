@@ -1,0 +1,106 @@
+[
+  {
+    "id": "ember_shot",
+    "name": "Ember Shot",
+    "element": "fire",
+    "hooks": ["onHit"],
+    "description": "Each hit adds a burn stack: {dps} damage per second for {durationSec} s. Up to {maxStacks} stacks.",
+    "levels": [
+      { "dps": 3, "durationSec": 3, "maxStacks": 5 },
+      { "dps": 3, "durationSec": 3, "maxStacks": 7 },
+      { "dps": 3, "durationSec": 3, "maxStacks": 9 }
+    ]
+  },
+  {
+    "id": "venom_shot",
+    "name": "Venom Shot",
+    "element": "poison",
+    "hooks": ["onHit"],
+    "description": "Poisons for {dps} damage per second for {durationSec} s. On death the poison spreads to {spreadTargets} enemies within {spreadRadius} units.",
+    "levels": [
+      { "dps": 8, "durationSec": 6, "spreadTargets": 2, "spreadRadius": 3 },
+      { "dps": 8, "durationSec": 6, "spreadTargets": 3, "spreadRadius": 3 },
+      { "dps": 8, "durationSec": 6, "spreadTargets": 4, "spreadRadius": 3 }
+    ]
+  },
+  {
+    "id": "thunder_spark",
+    "name": "Thunder Spark",
+    "element": "lightning",
+    "hooks": ["onHit"],
+    "description": "Each hit chains to {chains} more enemies within {radius} units.",
+    "levels": [
+      { "chains": 2, "radius": 4, "damageFactor": 0.5 },
+      { "chains": 3, "radius": 4, "damageFactor": 0.5 },
+      { "chains": 4, "radius": 4, "damageFactor": 0.5 }
+    ]
+  },
+  {
+    "id": "twin_shot",
+    "name": "Twin Shot",
+    "element": null,
+    "hooks": ["onFire"],
+    "description": "Fires {bullets} bullets instead of 1.",
+    "levels": [
+      { "bullets": 2, "damageFactor": 0.65, "spreadDeg": 8 },
+      { "bullets": 2, "damageFactor": 0.75, "spreadDeg": 8 },
+      { "bullets": 3, "damageFactor": 0.75, "spreadDeg": 12 }
+    ]
+  },
+  {
+    "id": "ricochet",
+    "name": "Ricochet",
+    "element": null,
+    "hooks": ["onHit"],
+    "description": "When the bullet would stop, it bounces to {bounces} nearby enemies.",
+    "levels": [
+      { "bounces": 1, "radius": 5, "damageFactor": 1 },
+      { "bounces": 2, "radius": 5, "damageFactor": 1 },
+      { "bounces": 3, "radius": 5, "damageFactor": 1 }
+    ]
+  },
+  {
+    "id": "long_rifling",
+    "name": "Long Rifling",
+    "element": null,
+    "hooks": ["onFire"],
+    "description": "Bullet speed and range up.",
+    "levels": [
+      { "speedBonus": 0.5, "rangeBonus": 0.3 },
+      { "speedBonus": 0.7, "rangeBonus": 0.3 },
+      { "speedBonus": 0.9, "rangeBonus": 0.3 }
+    ]
+  },
+  {
+    "id": "piercing_bore",
+    "name": "Piercing Bore",
+    "element": null,
+    "hooks": ["onFire"],
+    "description": "Bullets pass through {pierce} more enemies.",
+    "levels": [{ "pierce": 1 }, { "pierce": 2 }, { "pierce": 3 }]
+  },
+  {
+    "id": "heavy_slug",
+    "name": "Heavy Slug",
+    "element": null,
+    "hooks": ["stats", "onFire"],
+    "description": "Bigger damage and knockback, slower fire rate.",
+    "levels": [
+      { "damageBonus": 0.4, "fireRatePenalty": 0.15, "knockbackBonus": 0.5 },
+      { "damageBonus": 0.55, "fireRatePenalty": 0.15, "knockbackBonus": 0.5 },
+      { "damageBonus": 0.7, "fireRatePenalty": 0.15, "knockbackBonus": 0.5 }
+    ]
+  },
+  {
+    "id": "split_shot",
+    "name": "Split Shot",
+    "element": null,
+    "hooks": ["onHit"],
+    "description": "On hit, splits into {shards} shards.",
+    "levels": [
+      { "shards": 3, "damageFactor": 0.3, "arcDeg": 60, "range": 4 },
+      { "shards": 4, "damageFactor": 0.3, "arcDeg": 70, "range": 4 },
+      { "shards": 5, "damageFactor": 0.3, "arcDeg": 80, "range": 4 }
+    ]
+  }
+]

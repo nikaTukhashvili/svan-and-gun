@@ -1,0 +1,136 @@
+/**
+ * window.__svan: a test hook for Playwright and console debugging.
+ * Installed only in dev and test builds (never in a production build).
+ * Later tasks extend it: skip time, grant scrap, kill boss (TDD: Testing).
+ */
+import Phaser from 'phaser';
+import { SceneKeys } from '../config';
+import type { RunResult } from '../core/events';
+import type { RunBuild } from '../systems/build';
+import { freshSave, type SaveSystem, type SaveV1 } from '../systems/save';
+
+/** Snapshot of the current run for tests. Positions in units. */
+export interface RunDebugState {
+  gunId: string;
+  seed: number;
+  timeSec: number;
+  x: number;
+  y: number;
+  hp: number;
+  maxHp: number;
+  invulnerable: boolean;
+  ammo: number;
+  magSize: number;
+  reloading: boolean;
+  slowed: boolean;
+  bulletsActive: number;
+  enemiesAlive: number;
+  maxAlive: number;
+  kills: number;
+  eliteKills: number;
+  ended: boolean;
+  result: RunResult | null;
+  level: number;
+  levelUpOpen: boolean;
+  silver: number;
+}
+
+export interface EnemyDebugState {
+  type: string;
+  elite: boolean;
+  x: number;
+  y: number;
+  hp: number;
+  state: string;
+}
+
+/** Present while GameScene is running. */
+export interface RunDebugApi {
+  state(): RunDebugState;
+  enemies(): EnemyDebugState[];
+  /** Apply an enemy hit (defence and invulnerability apply). Returns damage taken. */
+  damagePlayer(amount: number): number;
+  setGodMode(on: boolean): void;
+  /** Spawn a ring of enemies around the player (radius in units, default 10). Returns how many spawned. */
+  spawnEnemies(
+    enemy: string,
+    count: number,
+    opts?: { elite?: boolean; trait?: 'fast' | 'deathBurst'; radius?: number },
+  ): number;
+  /** Jump the run timer forward; timeline events in between fire on the next frame. */
+  skipTime(seconds: number): void;
+  killAll(): void;
+  /** Jump to the boss time; the boss spawns on the next frame. */
+  spawnBoss(): void;
+  boss(): { phase: number; hp: number; maxHp: number; enraged: boolean } | null;
+  damageBoss(amount: number): void;
+  grantScrap(amount: number): void;
+  build(): RunBuild;
+  setBuild(build: RunBuild): void;
+  pickups(): { kind: string; value: number; x: number; y: number }[];
+}
+
+export interface SvanTestHook {
+  game: Phaser.Game;
+  /** True once boot finished and the menu is up. */
+  ready: boolean;
+  /** Set when data validation fails at boot. */
+  bootError: string | null;
+  renderer(): 'webgl' | 'canvas';
+  activeScenes(): string[];
+  textureExists(key: string): boolean;
+  fps(): number;
+  /** Stop every scene and start a run with this gun and seed. */
+  startRun(gunId: string, seed?: number): void;
+  run?: RunDebugApi;
+  /** The save (MetaState): read it, give silver, wipe it. */
+  meta?: { state(): SaveV1; setSilver(n: number): void; reset(): void };
+}
+
+declare global {
+  interface Window {
+    __svan?: SvanTestHook;
+  }
+}
+
+export const testHookEnabled = import.meta.env.DEV || import.meta.env.MODE === 'test';
+
+export function installTestHook(game: Phaser.Game): void {
+  if (!testHookEnabled) return;
+  window.__svan = {
+    game,
+    ready: false,
+    bootError: null,
+    renderer: () => (game.renderer.type === Phaser.WEBGL ? 'webgl' : 'canvas'),
+    activeScenes: () => game.scene.getScenes(true).map((s) => s.sys.settings.key),
+    textureExists: (key) => game.textures.exists(key),
+    fps: () => game.loop.actualFps,
+    startRun: (gunId, seed = 1) => {
+      for (const s of game.scene.getScenes(true)) game.scene.stop(s.sys.settings.key);
+      game.scene.start(SceneKeys.Game, { gunId, seed });
+    },
+  };
+}
+
+export function installMetaHook(save: SaveSystem): void {
+  if (!window.__svan) return;
+  window.__svan.meta = {
+    state: () => JSON.parse(JSON.stringify(save.state)) as SaveV1,
+    setSilver: (n) => {
+      save.state.silver = n;
+      save.save();
+    },
+    reset: () => {
+      save.state = freshSave();
+      save.save();
+    },
+  };
+}
+
+export function markReady(): void {
+  if (window.__svan) window.__svan.ready = true;
+}
+
+export function markBootError(message: string): void {
+  if (window.__svan) window.__svan.bootError = message;
+}

@@ -1,0 +1,122 @@
+[
+  {
+    "id": "max_hp",
+    "name": "Max HP",
+    "stat": "maxHp",
+    "mode": "add",
+    "perLevel": 10,
+    "maxLevel": 10,
+    "baseCost": 50,
+    "costGrowth": 1.5
+  },
+  {
+    "id": "defence",
+    "name": "Defence",
+    "stat": "defence",
+    "mode": "add",
+    "perLevel": 1,
+    "maxLevel": 5,
+    "baseCost": 120,
+    "costGrowth": 1.5
+  },
+  {
+    "id": "walk_speed",
+    "name": "Walk speed",
+    "stat": "moveSpeed",
+    "mode": "mult",
+    "perLevel": 0.03,
+    "maxLevel": 5,
+    "baseCost": 80,
+    "costGrowth": 1.5
+  },
+  {
+    "id": "shooting_speed",
+    "name": "Shooting speed",
+    "stat": "fireRate",
+    "mode": "mult",
+    "perLevel": 0.04,
+    "maxLevel": 5,
+    "baseCost": 100,
+    "costGrowth": 1.5
+  },
+  {
+    "id": "bullet_speed",
+    "name": "Bullet speed",
+    "stat": "bulletSpeed",
+    "mode": "mult",
+    "perLevel": 0.05,
+    "maxLevel": 5,
+    "baseCost": 60,
+    "costGrowth": 1.5
+  },
+  {
+    "id": "damage",
+    "name": "Damage",
+    "stat": "damage",
+    "mode": "mult",
+    "perLevel": 0.05,
+    "maxLevel": 5,
+    "baseCost": 120,
+    "costGrowth": 1.5
+  },
+  {
+    "id": "reload_speed",
+    "name": "Reload speed",
+    "stat": "reloadSpeed",
+    "mode": "mult",
+    "perLevel": 0.05,
+    "maxLevel": 5,
+    "baseCost": 80,
+    "costGrowth": 1.5
+  },
+  {
+    "id": "pickup_radius",
+    "name": "Pickup radius",
+    "stat": "pickupRadius",
+    "mode": "mult",
+    "perLevel": 0.1,
+    "maxLevel": 5,
+    "baseCost": 40,
+    "costGrowth": 1.5
+  },
+  {
+    "id": "hp_regen",
+    "name": "HP regen",
+    "stat": "hpRegen",
+    "mode": "add",
+    "perLevel": 0.2,
+    "maxLevel": 3,
+    "baseCost": 150,
+    "costGrowth": 1.5
+  },
+  {
+    "id": "scrap_gain",
+    "name": "Scrap gain",
+    "stat": "scrapGain",
+    "mode": "mult",
+    "perLevel": 0.05,
+    "maxLevel": 5,
+    "baseCost": 100,
+    "costGrowth": 1.5
+  },
+  {
+    "id": "reroll",
+    "name": "Reroll",
+    "stat": "rerolls",
+    "mode": "add",
+    "perLevel": 1,
+    "maxLevel": 3,
+    "baseCost": 200,
+    "costGrowth": 1.5
+  },
+  {
+    "id": "second_wind",
+    "name": "Second wind",
+    "stat": "revives",
+    "mode": "add",
+    "perLevel": 1,
+    "maxLevel": 1,
+    "baseCost": 1000,
+    "costGrowth": 1.5
+  }
+]

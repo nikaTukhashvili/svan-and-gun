@@ -1,0 +1,55 @@
+{
+  "bossSpawnFactor": 0.5,
+  "segments": [
+    { "name": "Arrival", "from": 0, "to": 60, "maxAlive": 20, "spawnPerSecond": 2, "weights": { "kaji": 1 } },
+    {
+      "name": "Pressure",
+      "from": 60,
+      "to": 120,
+      "maxAlive": 40,
+      "spawnPerSecond": 4,
+      "weights": { "kaji": 0.7, "ali": 0.3 }
+    },
+    {
+      "name": "Push",
+      "from": 120,
+      "to": 210,
+      "maxAlive": 60,
+      "spawnPerSecond": 5,
+      "weights": { "kaji": 0.55, "ali": 0.3, "ochopintre": 0.15 }
+    },
+    {
+      "name": "Siege",
+      "from": 210,
+      "to": 300,
+      "maxAlive": 90,
+      "spawnPerSecond": 7,
+      "weights": { "kaji": 0.45, "ali": 0.2, "ochopintre": 0.15, "rokapi": 0.1, "devi_brute": 0.1 }
+    },
+    { "name": "Calm", "from": 300, "to": 330, "maxAlive": 0, "spawnPerSecond": 0, "weights": {} },
+    {
+      "name": "Boss",
+      "from": 330,
+      "to": null,
+      "maxAlive": 90,
+      "spawnPerSecond": 5,
+      "weights": { "kaji": 0.5, "ali": 0.2, "ochopintre": 0.15, "rokapi": 0.1, "devi_brute": 0.05 }
+    }
+  ],
+  "events": [
+    { "at": 0, "type": "tutorial", "prompt": "WASD to move", "durationSec": 6 },
+    {
+      "at": 6,
+      "type": "tutorial",
+      "prompt": "Aim with the mouse, hold the left button to shoot",
+      "durationSec": 6
+    },
+    { "at": 14, "type": "tutorial", "prompt": "R to reload (it also reloads when empty)", "durationSec": 6 },
+    { "at": 120, "type": "elite", "enemy": "ali", "trait": "fast" },
+    { "at": 210, "type": "swarmRing", "enemy": "kaji", "count": 30, "radius": 13 },
+    { "at": 240, "type": "elite", "enemy": "ochopintre", "trait": "deathBurst" },
+    { "at": 300, "type": "calm" },
+    { "at": 300, "type": "bossWarning" },
+    { "at": 330, "type": "boss", "boss": "devi_chieftain" }
+  ]
+}

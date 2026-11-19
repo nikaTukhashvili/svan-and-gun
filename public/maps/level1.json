@@ -1,0 +1,40 @@
+{
+  "id": "level1",
+  "name": "Return from the Hunt",
+  "width": 160,
+  "height": 90,
+  "playerStart": { "x": 80, "y": 58 },
+  "tower": { "x": 80, "y": 45, "r": 2.5 },
+  "obstacles": [
+    { "shape": "circle", "kind": "tower", "x": 80, "y": 45, "r": 2.5 },
+    { "shape": "rect", "kind": "house", "x": 69, "y": 38, "w": 6, "h": 4 },
+    { "shape": "rect", "kind": "house", "x": 93, "y": 38, "w": 6, "h": 4 },
+    { "shape": "rect", "kind": "house", "x": 66.5, "y": 54, "w": 5, "h": 4 },
+    { "shape": "rect", "kind": "house", "x": 95, "y": 55, "w": 6, "h": 4 },
+    { "shape": "rect", "kind": "house", "x": 76.5, "y": 29.5, "w": 5, "h": 3 },
+    { "shape": "rect", "kind": "church", "x": 103, "y": 44, "w": 6, "h": 8 },
+    { "shape": "rect", "kind": "fence", "x": 65, "y": 62.25, "w": 10, "h": 0.5 },
+    { "shape": "rect", "kind": "fence", "x": 94, "y": 64.25, "w": 8, "h": 0.5 },
+    { "shape": "circle", "kind": "rock", "x": 30, "y": 20, "r": 2 },
+    { "shape": "circle", "kind": "rock", "x": 130, "y": 25, "r": 2.5 },
+    { "shape": "circle", "kind": "rock", "x": 40, "y": 70, "r": 2 },
+    { "shape": "circle", "kind": "rock", "x": 120, "y": 72, "r": 3 },
+    { "shape": "circle", "kind": "rock", "x": 20, "y": 50, "r": 1.5 },
+    { "shape": "circle", "kind": "rock", "x": 140, "y": 50, "r": 2 },
+    { "shape": "circle", "kind": "rock", "x": 55, "y": 15, "r": 1.5 },
+    { "shape": "circle", "kind": "rock", "x": 105, "y": 80, "r": 2 }
+  ],
+  "powderBarrels": [
+    { "x": 72, "y": 46 },
+    { "x": 88, "y": 59 },
+    { "x": 45, "y": 40 },
+    { "x": 115, "y": 45 },
+    { "x": 80, "y": 20 }
+  ],
+  "crates": [
+    { "x": 62, "y": 44 },
+    { "x": 98, "y": 49 },
+    { "x": 50, "y": 60 },
+    { "x": 110, "y": 30 }
+  ]
+}

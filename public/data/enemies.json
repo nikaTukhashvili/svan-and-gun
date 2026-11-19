@@ -1,0 +1,92 @@
+[
+  {
+    "id": "kaji",
+    "name": "Kaji Imp",
+    "folklore": "Kaji, malicious spirits",
+    "hp": 10,
+    "defence": 0,
+    "speed": 3.5,
+    "contactDamage": 5,
+    "radius": 0.375,
+    "knockbackResist": 0,
+    "visual": { "color": "#c0392b", "shape": "circle" },
+    "behaviour": { "type": "swarm" }
+  },
+  {
+    "id": "ali",
+    "name": "Ali",
+    "folklore": "Ali, female demons that hunt travellers",
+    "hp": 18,
+    "defence": 0,
+    "speed": 4.5,
+    "contactDamage": 8,
+    "radius": 0.4,
+    "knockbackResist": 0.1,
+    "visual": { "color": "#8e44ad", "shape": "triangle" },
+    "behaviour": {
+      "type": "flank",
+      "circleRadius": 4,
+      "circleSec": 2,
+      "windupSec": 0.4,
+      "dashSpeed": 9,
+      "dashSec": 0.6,
+      "recoverSec": 0.5
+    }
+  },
+  {
+    "id": "ochopintre",
+    "name": "Ochopintre",
+    "folklore": "Forest spirit, half goat",
+    "hp": 40,
+    "defence": 0,
+    "speed": 3,
+    "contactDamage": 12,
+    "radius": 0.55,
+    "knockbackResist": 0.3,
+    "visual": { "color": "#27ae60", "shape": "diamond" },
+    "behaviour": {
+      "type": "charge",
+      "triggerRange": 7,
+      "windupSec": 0.8,
+      "chargeSpeed": 10,
+      "chargeMaxSec": 1.2,
+      "stunSec": 0.6
+    }
+  },
+  {
+    "id": "rokapi",
+    "name": "Rokapi",
+    "folklore": "Hag-like evil creature",
+    "hp": 25,
+    "defence": 0,
+    "speed": 2.5,
+    "contactDamage": 6,
+    "radius": 0.45,
+    "knockbackResist": 0.1,
+    "visual": { "color": "#d35400", "shape": "hexagon" },
+    "behaviour": {
+      "type": "caster",
+      "keepMin": 6,
+      "keepMax": 8,
+      "castCooldownSec": 2.5,
+      "projectileSpeed": 6,
+      "projectileDamage": 6,
+      "projectileRange": 12,
+      "slowFactor": 0.3,
+      "slowSec": 2
+    }
+  },
+  {
+    "id": "devi_brute",
+    "name": "Devi Brute",
+    "folklore": "Devi, giant multi-headed ogres",
+    "hp": 120,
+    "defence": 3,
+    "speed": 2,
+    "contactDamage": 20,
+    "radius": 0.8,
+    "knockbackResist": 0.8,
+    "visual": { "color": "#7f8c8d", "shape": "square" },
+    "behaviour": { "type": "tank" }
+  }
+]
