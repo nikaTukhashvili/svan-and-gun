@@ -14,10 +14,10 @@ Stack: **Phaser 4 + TypeScript** (Vite). Design: `Svan and Gun — Game Design D
 | M3 Upgrades | 9 | 9 | 12.5 | 0.0 |
 | M4 Boss and run end | 4 | 4 | 5.0 | 0.0 |
 | M5 Meta and UI | 6 | 6 | 6.0 | 0.0 |
-| M6 Polish and playtest | 1 | 4 | 4.5 | 3.5 |
-| **Total** | **35** | **38** | **43.5** | **3.5** |
+| M6 Polish and playtest | 2 | 4 | 4.5 | 3.0 |
+| **Total** | **36** | **38** | **43.5** | **3.0** |
 
-**Overall: 35 / 38 tasks (92%)** · Est. days left: **3.5**
+**Overall: 36 / 38 tasks (95%)** · Est. days left: **3.0**
 
 ---
 
@@ -78,7 +78,7 @@ Stack: **Phaser 4 + TypeScript** (Vite). Design: `Svan and Gun — Game Design D
 - [x] **T35** (1.0d) — Placeholder SFX, hit flash, damage numbers, screen shake toggle
 - [ ] **T36** (2.0d) — Balance pass: tune data files from playtests
 - [~] **T37** (1.0d) — Run the GDD Phase 1 acceptance checklist
-- [ ] **T38** (0.5d) — Build and host the web demo (itch.io or GitHub Pages)
+- [x] **T38** (0.5d) — Build and host the web demo (itch.io or GitHub Pages)
 
 ---
 
@@ -175,4 +175,12 @@ _Add dated notes here as tasks complete (decisions, deviations, follow-ups)._
   - [x] 90+ enemies at a steady 60 FPS (headed stress test: 120 enemies, 143.7 FPS average, minimum 100)
   - [x] Spawn timeline, enemy stats, mods and buffs live in data files (ESLint guards the pure layers; only cosmetic constants stay in code)
 - Still open: T36 balance pass and the "feels different" check need playtests; T38 hosting needs a choice (itch.io or GitHub Pages, and an account). `npm run build` produces `dist/` (~417 KB gzipped).
+
+**2026-11-20 · T38 done: hosted**
+
+- Repo: https://github.com/nikaTukhashvili/svan-and-gun (public).
+- Playable: https://nikatukhashvili.github.io/svan-and-gun/
+- `.github/workflows/deploy.yml` runs unit tests, builds and publishes `dist/` to GitHub Pages on every push to `main`. It is separate from CI, so flaky e2e cannot block a deploy.
+- The first CI run on GitHub passed everything (lint, format, types, unit, all e2e).
+- Phase 1 is now in playtesting: T36 balance pass and the T37 gun-feel check.
 

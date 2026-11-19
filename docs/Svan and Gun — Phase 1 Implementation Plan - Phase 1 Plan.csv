@@ -1,7 +1,7 @@
-﻿Tasks done,35,,,,
+﻿Tasks done,36,,,,
 Total tasks,38,,,,
-Progress,92%,,,,
-Est. days left,3.5,,,,
+Progress,95%,,,,
+Est. days left,3.0,,,,
 ,,,,,
 Phase 1 tasks (Phaser 4 + TypeScript),,,,,
 ID,Milestone,Task,Status,Est. (days),Notes
@@ -42,4 +42,4 @@ T34,M5 Meta and UI,"HUD: HP, ammo, scrap bar, level, timer, kills, silver, owned
 T35,M6 Polish and playtest,"Placeholder SFX, hit flash, damage numbers, screen shake toggle",Done,1.0,
 T36,M6 Polish and playtest,Balance pass: tune data files from playtests,To do,2.0,
 T37,M6 Polish and playtest,Run the GDD Phase 1 acceptance checklist,In progress,1.0,
-T38,M6 Polish and playtest,Build and host the web demo (itch.io or GitHub Pages),To do,0.5,
+T38,M6 Polish and playtest,Build and host the web demo (itch.io or GitHub Pages),Done,0.5,
