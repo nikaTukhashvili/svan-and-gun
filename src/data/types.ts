@@ -14,6 +14,8 @@ import type {
   MagazineModSchema,
   MapSchema,
   ObstacleSchema,
+  PlaygroundDummySchema,
+  PlaygroundSchema,
   RaritySchema,
   StatIdSchema,
   StatModeSchema,
@@ -42,6 +44,8 @@ export type BuffDef = z.infer<typeof BuffSchema>;
 export type DropsDef = z.infer<typeof DropsSchema>;
 export type MapDef = z.infer<typeof MapSchema>;
 export type ObstacleDef = z.infer<typeof ObstacleSchema>;
+export type PlaygroundDef = z.infer<typeof PlaygroundSchema>;
+export type PlaygroundDummyDef = z.infer<typeof PlaygroundDummySchema>;
 export type StatId = z.infer<typeof StatIdSchema>;
 export type StatMode = z.infer<typeof StatModeSchema>;
 
@@ -64,5 +68,6 @@ export interface GameData {
   readonly cards: CardsDef;
   readonly buffs: readonly BuffDef[];
   readonly drops: DropsDef;
+  readonly playground: PlaygroundDef;
   readonly maps: Readonly<Record<string, MapDef>>;
 }

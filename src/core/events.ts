@@ -15,8 +15,8 @@ export interface GameEvents {
   /** Reload finished; the magazine is full. */
   'weapon:reloaded': { ammo: number; magSize: number };
   'mod:applied': { modId: string; slot: number; level: number };
-  /** Every damage instance on an enemy (damage numbers, hit flash, hit sound). */
-  'enemy:damaged': { x: number; y: number; amount: number; crit: boolean; byStatus: boolean };
+  /** Every damage instance on an enemy (damage numbers, hit flash, hit sound, DPS meter). `uid`: Enemy.uid. */
+  'enemy:damaged': { uid: number; x: number; y: number; amount: number; crit: boolean; byStatus: boolean };
   'enemy:killed': { type: string; elite: boolean; x: number; y: number; byStatus: boolean };
   'timeline:event': { type: string; at: number };
   'boss:spawned': { phase: number; hpLeft: number };

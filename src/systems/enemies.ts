@@ -77,6 +77,13 @@ export interface Enemy {
   isBoss: boolean;
   externalVx: number;
   externalVy: number;
+  /** Training Ground dummy: refills HP instead of dying; never pushed by neighbours or the player. */
+  immortal: boolean;
+  /** Spawn point, for a patrolling dummy. */
+  homeX: number;
+  homeY: number;
+  /** Patrolling dummy: true while walking away from home. */
+  patrolOut: boolean;
 }
 
 /** Bullet hit hooks for the mod pipeline (elements, ricochet, split shot). */
@@ -92,6 +99,8 @@ export interface SpawnOptions {
   minutes: number;
   elite?: boolean;
   trait?: EliteTrait;
+  /** Refill HP instead of dying (Training Ground dummies). */
+  immortal?: boolean;
 }
 
 export interface DeathBurst {
@@ -183,6 +192,10 @@ export class EnemySystem {
         hitFlash: 0,
         externalVx: 0,
         externalVy: 0,
+        immortal: false,
+        homeX: 0,
+        homeY: 0,
+        patrolOut: true,
       });
       this.free.push(capacity - 1 - i);
     }
@@ -203,7 +216,7 @@ export class EnemySystem {
    */
   spawnBoss(boss: BossDef, x: number, y: number): Enemy | null {
     if (!this.defsById.has(boss.id)) {
-      this.defsById.set(boss.id, {
+      this.registerDef({
         id: boss.id,
         name: boss.name,
         folklore: '',
@@ -216,11 +229,16 @@ export class EnemySystem {
         visual: boss.visual,
         behaviour: { type: 'tank' },
       });
-      this.maxRadius = Math.max(this.maxRadius, u(boss.radius));
     }
     const e = this.spawn(boss.id, x, y, { minutes: 0 }); // the boss does not scale with time
     if (e) e.isBoss = true;
     return e;
+  }
+
+  /** Add an enemy kind that is not in enemies.json (the boss, Training Ground dummies). */
+  registerDef(def: EnemyDef): void {
+    this.defsById.set(def.id, def);
+    this.maxRadius = Math.max(this.maxRadius, u(def.radius));
   }
 
   def(id: string): EnemyDef {
@@ -267,6 +285,10 @@ export class EnemySystem {
     e.isBoss = false;
     e.hitFlash = 0;
     e.externalVx = e.externalVy = 0;
+    e.immortal = o.immortal ?? false;
+    e.homeX = x;
+    e.homeY = y;
+    e.patrolOut = true;
     this.active++;
     return e;
   }
@@ -277,8 +299,11 @@ export class EnemySystem {
     const amount = ignoreDefence ? raw : applyDefence(raw, e.defence, this.opts.config.combat.minDamage);
     e.hp -= amount;
     if (!byStatus) e.hitFlash = HIT_FLASH_SEC;
-    this.opts.bus.emit('enemy:damaged', { x: e.x, y: e.y, amount, crit, byStatus });
-    if (e.hp <= 0) this.kill(e, byStatus);
+    this.opts.bus.emit('enemy:damaged', { uid: e.uid, x: e.x, y: e.y, amount, crit, byStatus });
+    if (e.hp <= 0) {
+      if (e.immortal) e.hp = e.maxHp; // the whole hit still counts, so DPS is not capped by HP
+      else this.kill(e, byStatus);
+    }
     return amount;
   }
 
@@ -510,6 +535,22 @@ export class EnemySystem {
         // In the band: drift sideways so it is not a sitting target.
         return [-uy * e.orbitSign * s * 0.4, ux * e.orbitSign * s * 0.4];
       }
+
+      case 'dummy': {
+        if (!b.patrol) return [0, 0];
+        // Ping-pong between home and home + (dx, dy).
+        const tx = e.homeX + (e.patrolOut ? u(b.patrol.dx) : 0);
+        const ty = e.homeY + (e.patrolOut ? u(b.patrol.dy) : 0);
+        const ps = u(b.patrol.speed);
+        const ddx = tx - e.x;
+        const ddy = ty - e.y;
+        const d = Math.hypot(ddx, ddy);
+        if (d <= ps * dt) {
+          e.patrolOut = !e.patrolOut;
+          return dt > 0 ? [ddx / dt, ddy / dt] : [0, 0];
+        }
+        return [(ddx / d) * ps, (ddy / d) * ps];
+      }
     }
   }
 
@@ -533,7 +574,7 @@ export class EnemySystem {
       const pdx = e.x - px;
       const pdy = e.y - py;
       const pd2 = pdx * pdx + pdy * pdy;
-      if (pd2 > cull2) continue;
+      if (pd2 > cull2 || e.immortal) continue; // dummies stay where they are placed
 
       // Stop at the player's edge instead of piling on top of him. Leave 1 px of overlap so
       // contact damage still registers.

@@ -247,6 +247,20 @@ export function swapSlots(build: RunBuild, kind: SlotKind, a: number, b: number)
   slots[b] = tmp;
 }
 
+/**
+ * Put a mod in a slot directly (Training Ground). A mod can be in only one slot per kind, as
+ * findMod expects, so putting it in a second slot moves it there. `null` empties the slot.
+ */
+export function setSlot(build: RunBuild, kind: SlotKind, index: number, slot: ModSlot | null): void {
+  const slots = slotsOf(build, kind);
+  if (index < 0 || index >= slots.length) throw new Error(`No ${kind} slot ${index}`);
+  if (slot) {
+    const other = findMod(build, kind, slot.id);
+    if (other !== -1 && other !== index) slots[other] = null;
+  }
+  slots[index] = slot ? { id: slot.id, level: slot.level } : null;
+}
+
 /** True if a new (non-replace) mod would need a free slot that does not exist. For tests. */
 export function isCardValid(data: GameData, build: RunBuild, level: number, card: Card): boolean {
   if (card.type === 'runStat') return true;

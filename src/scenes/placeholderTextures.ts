@@ -124,6 +124,10 @@ export function generatePlaceholderTextures(scene: Phaser.Scene, data: GameData)
   for (const e of data.enemies) {
     makeShape(scene, TextureKeys.enemy(e.id), e.visual.shape, u(e.radius), hex(e.visual.color));
   }
+  // Training Ground dummies are drawn through EnemyView like any enemy.
+  for (const dm of data.playground.dummies) {
+    makeShape(scene, TextureKeys.enemy(dm.id), dm.visual.shape, u(dm.radius), hex(dm.visual.color), 3);
+  }
   makeShape(
     scene,
     TextureKeys.boss,

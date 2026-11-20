@@ -243,6 +243,11 @@ export const BehaviourSchema = z.discriminatedUnion('type', [
     slowSec: pos,
   }),
   z.strictObject({ type: z.literal('tank') }),
+  /** Training Ground dummy: stands still, or walks back and forth from its spawn point to spawn + (dx, dy). */
+  z.strictObject({
+    type: z.literal('dummy'),
+    patrol: z.strictObject({ dx: z.number(), dy: z.number(), speed: pos }).optional(),
+  }),
 ]);
 
 export const ShapeSchema = z.enum(['circle', 'square', 'triangle', 'diamond', 'hexagon']);
@@ -411,6 +416,37 @@ export const DropsSchema = z.strictObject({
     scrapValue: posInt,
   }),
   powderBarrel: z.strictObject({ hp: pos, damage: pos, radius: pos }),
+});
+
+// ---------- playground.json (Training Ground, a dev tool) ----------
+
+export const PlaygroundDummySchema = z.strictObject({
+  id: IdSchema,
+  name: z.string().min(1),
+  /** Only for the HP bar: dummies refill instead of dying. */
+  hp: pos,
+  defence: nonNeg,
+  /** Body radius in units. */
+  radius: pos,
+  visual: z.strictObject({ color, shape: ShapeSchema }),
+  /** Walks from its spawn point to spawn + (dx, dy) and back (units, units/s). */
+  patrol: z.strictObject({ dx: z.number(), dy: z.number(), speed: pos }).optional(),
+});
+
+export const PlaygroundSchema = z.strictObject({
+  /** Map key in public/maps. */
+  map: IdSchema,
+  dummies: z.array(PlaygroundDummySchema).min(1),
+  /** Where each dummy stands, in map units. */
+  layout: z.array(z.strictObject({ dummy: IdSchema, x: nonNeg, y: nonNeg })).min(1),
+  /** Rolling window for the live DPS number. */
+  dpsWindowSec: pos,
+  /** A new measurement starts after this long with no damage. */
+  idleResetSec: pos,
+  /** Session DPS divides by at least this many seconds, so one early hit does not read as a huge DPS. */
+  minSessionSec: pos,
+  /** How often the labels over the dummies and the panel readout refresh. */
+  labelRefreshSec: pos,
 });
 
 // ---------- maps/level1.json ----------

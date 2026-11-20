@@ -126,3 +126,27 @@ describe('data validation errors', () => {
     expect(p.length).toBeGreaterThanOrEqual(3);
   });
 });
+
+describe('playground.json (Training Ground)', () => {
+  it('loads with its map and dummies', () => {
+    const d = loadGameData();
+    expect(d.maps[d.playground.map]).toBeDefined();
+    expect(d.playground.dummies.map((x) => x.id)).toEqual([
+      'dummy_plain',
+      'dummy_armoured',
+      'dummy_pack',
+      'dummy_mover',
+    ]);
+  });
+
+  it('catches an unknown dummy in the layout, a missing map and a dummy id that is an enemy id', () => {
+    const problems = problemsAfter((files) => {
+      files.playground.layout[0].dummy = 'nobody';
+      files.playground.map = 'nowhere';
+      files.playground.dummies[0].id = 'kaji';
+    });
+    expect(problems.some((p) => p.includes('unknown dummy "nobody"'))).toBe(true);
+    expect(problems.some((p) => p.includes('unknown map "nowhere"'))).toBe(true);
+    expect(problems.some((p) => p.includes('"kaji" is also an enemy id'))).toBe(true);
+  });
+});

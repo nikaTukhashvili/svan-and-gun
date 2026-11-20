@@ -21,6 +21,7 @@ import {
   GunsSchema,
   MagazineModsSchema,
   MapSchema,
+  PlaygroundSchema,
   TimelineSchema,
 } from './schemas';
 import type { GameData, MapDef } from './types';
@@ -45,6 +46,7 @@ const fileSchemas = {
   cards: CardsSchema,
   buffs: BuffsSchema,
   drops: DropsSchema,
+  playground: PlaygroundSchema,
 } satisfies Record<DataFileKey, z.ZodType>;
 
 type Parsed = { [K in DataFileKey]: z.infer<(typeof fileSchemas)[K]> };
@@ -207,6 +209,20 @@ function crossCheck(d: Parsed & { maps: Record<string, MapDef> }): string[] {
     if (!enemyIds.has(id)) p.push(`drops.json > scrapByEnemy: unknown enemy "${id}"`);
   const { small, medium, large } = d.drops.scrapPieces;
   if (!(small < medium && medium < large)) p.push('drops.json > scrapPieces: must be small < medium < large');
+
+  // Training Ground: the map exists, layout entries name a known dummy and stand inside the map.
+  const pg = d.playground;
+  for (const id of duplicates(pg.dummies.map((x) => x.id))) p.push(`playground.json: duplicate dummy "${id}"`);
+  const pgMap = d.maps[pg.map];
+  if (!pgMap) p.push(`playground.json > map: unknown map "${pg.map}"`);
+  const dummyIds = new Set(pg.dummies.map((x) => x.id));
+  for (const id of dummyIds)
+    if (enemyIds.has(id) || id === d.boss.id) p.push(`playground.json: dummy id "${id}" is also an enemy id`);
+  pg.layout.forEach((l, i) => {
+    if (!dummyIds.has(l.dummy)) p.push(`playground.json > layout.${i}: unknown dummy "${l.dummy}"`);
+    if (pgMap && (l.x > pgMap.width || l.y > pgMap.height))
+      p.push(`playground.json > layout.${i}: (${l.x}, ${l.y}) is outside the map`);
+  });
 
   // Maps: everything inside the bounds, the player does not start inside an obstacle.
   for (const [key, m] of Object.entries(d.maps)) {

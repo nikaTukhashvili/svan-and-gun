@@ -41,10 +41,11 @@ export const DATA_FILES = [
   'cards',
   'buffs',
   'drops',
+  'playground',
 ] as const;
 export type DataFileKey = (typeof DATA_FILES)[number];
 
-export const MAP_FILES = ['level1'] as const;
+export const MAP_FILES = ['level1', 'playground'] as const;
 export type MapKey = (typeof MAP_FILES)[number];
 
 /** Shared colours for placeholder UI (not gameplay tuning). */
