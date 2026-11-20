@@ -13,12 +13,12 @@ const levelUpClosed = (page: Page) =>
 const picked = (page: Page) => page.evaluate(() => window.__svan!.run!.state().cardsPicked);
 
 /**
- * Take card 1. A module card then asks for a slot: '1' puts it in slot 1, and a replace asks for
- * '1' once more.
+ * Take path 1, then card 1. A module or muzzle card then asks for a slot: '1' puts it in slot 1,
+ * and a replace asks for '1' once more.
  */
 async function pickFirst(page: Page): Promise<void> {
   const before = await picked(page);
-  for (let i = 0; i < 3 && (await picked(page)) === before; i++) {
+  for (let i = 0; i < 5 && (await picked(page)) === before; i++) {
     await page.keyboard.press('1');
     await page.waitForTimeout(80);
   }
@@ -81,6 +81,23 @@ test('reroll draws a new hand and uses the only charge', async ({ page }) => {
   await page.keyboard.press('r'); // no charges left: ignored
   await pickFirst(page);
   await levelUpClosed(page);
+});
+
+test('a level-up first asks for a path (Gods or Gunsmith), then shows its cards', async ({ page }) => {
+  const errors = trackErrors(page);
+  await startRun(page, 'long_gun');
+  await page.evaluate(() => window.__svan!.run!.grantScrap(5));
+  await levelUpOpen(page);
+  await page.waitForTimeout(150);
+  await page.screenshot({ path: test.info().outputPath('level-up-paths.png') });
+  const gunsmith = await gamePoint(page, 640 + 255, 275);
+  await page.mouse.click(gunsmith.x, gunsmith.y); // the right panel: Gunsmith
+  await page.waitForTimeout(150);
+  await page.screenshot({ path: test.info().outputPath('level-up-gunsmith-cards.png') });
+  expect(await picked(page)).toBe(0); // choosing a path is not a pick
+  await pickFirst(page);
+  await levelUpClosed(page);
+  expect(errors).toEqual([]);
 });
 
 test('placing a module next to the same one fuses them, with a preview first', async ({ page }) => {

@@ -2,7 +2,7 @@
  * Human-readable text for level-up cards and barrel slots. Module descriptions come from the data
  * files, with {param} placeholders filled from the tier's numbers.
  */
-import type { GameData, GunDef } from '../data/types';
+import type { CardPathDef, CardType, GameData, GunDef } from '../data/types';
 import type { Card, ModSlot } from '../systems/build';
 import { fuseResult, modDef, tierParams, type FusionEvent } from '../systems/fusion';
 import type { BarrelLayout } from '../systems/modPipeline';
@@ -190,13 +190,32 @@ export function describeCard(data: GameData, card: Card): CardText {
       const def = data.cards.runStats.find((r) => r.id === card.cardId)!;
       const value = card.mode === 'mult' ? `+${pct(card.value)}` : `+${card.value}`;
       return {
-        label: `RUN STAT · ${card.rarity.toUpperCase()}`,
+        label: `BLESSING · ${card.rarity.toUpperCase()}`,
         name: def.name,
         body: `${value} ${STAT_LABELS[card.stat] ?? card.stat} for this run.`,
         color: RARITY_COLORS[card.rarity],
       };
     }
   }
+}
+
+/** What a level-up path offers, one line per card type (path choice screen). */
+export function pathContents(data: GameData, path: CardPathDef): string[] {
+  /** "A, B and 4 more" keeps a long list on one line. */
+  const few = (names: string[], n = 2) =>
+    names.length <= n + 1 ? names.join(', ') : `${names.slice(0, n).join(', ')} and ${names.length - n} more`;
+  const names = (family: string) => data.barrelMods.filter((m) => m.family === family).map((m) => m.name);
+  const line: Record<CardType, () => string> = {
+    element: () => `Elements: ${few(names('element'), 3)}`,
+    runStat: () => 'Blessings: stats for this run',
+    grey: () => `Barrel modules: ${few(names('grey'))}`,
+    fitting: () => 'Fittings: boost their neighbours',
+    muzzle: () => 'Muzzle pieces: trade-offs that stack',
+    supportPerk: () => `Magazine work: ${few(data.supportPerks.map((p) => p.name))}`,
+    coreTier: () => 'Core Tier: more damage and fire rate',
+    tinker: () => 'Tinker: random +1 tiers in your barrel',
+  };
+  return path.types.map((t) => line[t]());
 }
 
 /** One line for what placing or swapping will do (level-up preview). */

@@ -448,11 +448,26 @@ export const CardTypeSchema = z.enum([
   'runStat',
   'supportPerk',
   'muzzle',
+  'tinker',
 ]);
+
+/**
+ * A level-up path (GDD: In-run progression): the player first picks a path, then 1 of 3 cards
+ * drawn only from that path's card types.
+ */
+export const CardPathSchema = z.strictObject({
+  id: IdSchema,
+  name: z.string().min(1),
+  description: z.string().min(1),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  types: z.array(CardTypeSchema).min(1),
+});
 
 export const CardsSchema = z.strictObject({
   baseRerolls: nonNegInt,
   cardsPerLevelUp: posInt,
+  /** Level-up paths; every card type belongs to exactly one. */
+  paths: z.array(CardPathSchema).min(1),
   /** Tinker card: this many random +1 tiers for modules in the barrel. */
   randomUpgrade: z.strictObject({ upgrades: posInt }),
   /**
@@ -467,6 +482,8 @@ export const CardsSchema = z.strictObject({
     runStat: nonNeg,
     supportPerk: nonNeg,
     muzzle: nonNeg,
+    /** Tinker (random +1 tiers for barrel modules). */
+    tinker: nonNeg,
   }),
   /** A module card that would fuse with a module already in the barrel weighs this many times more. */
   fusesWithOwnedMult: z.number().min(1),

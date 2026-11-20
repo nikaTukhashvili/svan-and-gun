@@ -49,14 +49,14 @@ import { ProjectileView } from './game/ProjectileView';
 import type { HudModel } from './HudScene';
 import type { LevelUpController } from './LevelUpScene';
 import type { PauseController } from './PauseScene';
-import type { BuildSheetData, SheetLine } from './BuildSheetScene';
+import { EQUIPMENT_SLOTS, type BuildSheetData, type SheetLine } from './BuildSheetScene';
 import type { ResultsData } from './ResultsScene';
 import { getGameData } from './gameData';
 import { getSave } from './meta';
 import { Sfx } from './audio/Sfx';
 import { DamageNumbers } from './game/DamageNumbers';
 import { metaBonuses } from '../systems/market';
-import { modName, muzzleLabel, slotLabel, STAT_LABELS } from '../ui/cardText';
+import { modName, muzzleLabel, roman, slotLabel, STAT_LABELS } from '../ui/cardText';
 import { KeyboardMouseInput } from './input/KeyboardMouseInput';
 
 export interface GameSceneData {
@@ -130,6 +130,8 @@ export class GameScene extends Phaser.Scene {
   private hand: Card[] = [];
   /** Test hook: the next hand, instead of a draw. */
   private forcedHand: Card[] | null = null;
+  /** Level-up path picked for the current choice (cards.json > paths); null = not chosen yet. */
+  private levelPath: string | null = null;
   private cardsPicked = 0;
   private grenades: { x: number; y: number; timeLeft: number; damage: number; radius: number }[] = [];
   private boss!: BossController;
@@ -164,6 +166,7 @@ export class GameScene extends Phaser.Scene {
     this.levelUpOpen = false;
     this.hand = [];
     this.forcedHand = null;
+    this.levelPath = null;
     this.cardsPicked = 0;
     this.grenades = [];
     this.rubbleBodies = new Map();
@@ -569,18 +572,38 @@ export class GameScene extends Phaser.Scene {
 
   private openLevelUp(): void {
     this.levelUpOpen = true;
-    this.hand = this.drawHand();
+    this.startChoice();
     this.scene.pause();
     this.scene.launch(SceneKeys.LevelUp, { controller: this.levelUpController() });
   }
 
-  private drawHand(): Card[] {
+  /**
+   * A new choice: the player picks a path first, then a card. A hand queued by the test hook skips
+   * the path step.
+   */
+  private startChoice(): void {
     if (this.forcedHand) {
-      const hand = this.forcedHand;
+      this.hand = this.forcedHand;
       this.forcedHand = null;
-      return hand;
+      this.levelPath = 'forced';
+      return;
     }
-    return drawCards(this.gd, this.run.build, this.progression.level, this.rng, this.run.support);
+    this.levelPath = null;
+    this.hand = [];
+  }
+
+  /** Cards from the chosen path. */
+  private drawHand(): Card[] {
+    const path = this.levelPath === 'forced' ? null : this.levelPath;
+    return drawCards(
+      this.gd,
+      this.run.build,
+      this.progression.level,
+      this.rng,
+      this.run.support,
+      undefined,
+      path,
+    );
   }
 
   private levelUpController(): LevelUpController {
@@ -590,7 +613,7 @@ export class GameScene extends Phaser.Scene {
       title: () =>
         this.progression.pending > 0
           ? `Level ${this.progression.level - this.progression.pending + 1}`
-          : "Gunsmith's Chest",
+          : 'Chest: a free upgrade',
       queuedAfter: () => queued() - 1,
       build: () => this.run.build,
       unlocked: () => unlockedSlots(d, this.progression.level, this.run.build.barrel.length),
@@ -608,6 +631,12 @@ export class GameScene extends Phaser.Scene {
       moveMuzzle: (a, b) => {
         moveMuzzle(this.run.build.muzzle, a, b);
         this.refreshStats();
+      },
+      paths: () => d.cards.paths,
+      path: () => this.levelPath,
+      choosePath: (id) => {
+        this.levelPath = id;
+        this.hand = this.drawHand();
       },
       cards: () => this.hand,
       rerollsLeft: () => Math.max(0, Math.round(this.stats.rerolls) - this.run.rerollsUsed),
@@ -642,7 +671,7 @@ export class GameScene extends Phaser.Scene {
         if (this.progression.pending > 0) this.progression.consume();
         else this.chestsPending--;
         this.refreshStats();
-        if (queued() > 0) this.hand = this.drawHand();
+        if (queued() > 0) this.startChoice();
         return events;
       },
       move: (a, b) => {
@@ -894,23 +923,22 @@ export class GameScene extends Phaser.Scene {
       row('Scrap gain', pct(base.scrapGain), pct(now.scrapGain), '%', 0),
     ];
 
-    const gun: SheetLine[] = [
-      { text: `${this.gun.name} · Core Tier ${this.run.build.coreTier}` },
-      ...this.run.build.barrel.map((s, i) => ({
-        text: `Barrel ${i + 1}: ${s ? slotLabel(d, s) : '—'}`,
-      })),
-      ...this.run.build.muzzle.map((m, i) => ({
-        text: `Muzzle ${i + 1}: ${m ? muzzleLabel(d, m) : '—'}`,
-      })),
-      ...d.supportPerks
-        .filter((p) => (this.run.support[p.id] ?? 0) > 0)
-        .map((p) => ({ text: `Support: ${p.name} ${this.run.support[p.id]}/${p.levels.length}` })),
-    ];
+    const support: SheetLine[] = d.supportPerks
+      .filter((p) => (this.run.support[p.id] ?? 0) > 0)
+      .map((p) => ({ text: `${p.name}  ${roman(this.run.support[p.id]!)} / ${roman(p.levels.length)}` }));
 
     return {
       perks: [...perkLines, ...lines],
+      support,
       stats,
-      gun,
+      // Items are not built yet: the paper doll shows the slots empty.
+      equipment: EQUIPMENT_SLOTS.map((slot) => ({ slot, item: null })),
+      gun: {
+        name: this.gun.name,
+        build: this.run.build,
+        layout: this.pipeline.layout,
+        strength: this.pipeline.strength,
+      },
       close: () => {
         this.pauseOpen = false;
         this.scene.resume();
@@ -1049,6 +1077,9 @@ export class GameScene extends Phaser.Scene {
       pipeline: () => this.pipeline,
       gun: () => this.gun,
       support: () => this.run.support,
+      paths: () => [],
+      path: () => 'workbench',
+      choosePath: () => {},
       cards: () => [],
       rerollsLeft: () => 0,
       reroll: () => {},

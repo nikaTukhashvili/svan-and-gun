@@ -211,6 +211,8 @@ Scrap fills a level bar; each level opens LevelUpScene with 3 cards from CardDra
 - Several level-ups from one big pickup are queued and shown one after another.
 - Barrel slot unlock levels live in `config.json` > slots.barrelUnlockLevels (4 open at level 1, then levels 4, 7, 10, 13).
 
+
+**Paths (2026-11-21).** `cards.json > paths` lists the level-up paths and the card types each holds. `cardType(card)` maps a card to its type (module cards by family, Tinker = `tinker`), `pathOf(data, card)` to its path, and `drawCards(..., path)` filters the weighted pool to that path before picking. GameScene keeps `levelPath` (null until the player picks; a hand queued by the test hook skips the step), and `LevelUpController` exposes `paths()`, `path()` and `choosePath(id)`.
 ### CardDraw algorithm
 
 1. Build candidates from the RunState:

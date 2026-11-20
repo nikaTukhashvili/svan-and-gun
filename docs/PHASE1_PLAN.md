@@ -217,3 +217,9 @@ _Add dated notes here as tasks complete (decisions, deviations, follow-ups)._
 - The Long Gun's "last barrel slot ×2" twist is removed (its muzzle replaces it). The Double Barrel starts every run with Grenade Mag level 1 (`guns.json > startingSupport`).
 - Level-up screen: the gun reads left to right as Core, barrel, muzzle. The Training Ground workbench has a muzzle row, and the panel a Muzzle section (piece + level per slot, stacked total).
 - Tests: `tests/unit/muzzle.test.ts`; e2e muzzle upgrade by drag, workbench muzzle fit/upgrade/remove. `window.__svan.levelUpSlots()` gives slot centres to e2e tests.
+
+**2026-11-21 · Level-up paths and the build sheet (branch `barrel-fusion`)**
+
+- A level-up (and a chest) first asks for a path, then shows 3 cards from it: **Favor of the Gods** (elements and blessings, i.e. the run stat cards) or **Gunsmith** (grey modules, fittings, muzzle pieces, magazine work = support perks, Core Tier, Tinker). `cards.json > paths`; the registry checks every card type is in exactly one path. Tinker has its own weight (`typeWeights.tinker`).
+- The build sheet (C) is redrawn: equipment paper doll (Svan Hat, Cloak, Chokha, 2 Rings, Boots; empty until items exist), stats, blessings and Tinker, magazine work, and the gun as core → barrel → muzzle.
+- Tests: path unit tests in `build.test.ts`; e2e path choice. The e2e `pickFirst` presses '1' up to 5 times (path, card, slot, confirm).

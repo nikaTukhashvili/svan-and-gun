@@ -143,6 +143,14 @@ function crossCheck(d: Parsed & { maps: Record<string, MapDef> }): string[] {
     }
   }
 
+  // Level-up paths: unique ids; every card type in exactly one path.
+  for (const id of duplicates(d.cards.paths.map((x) => x.id)))
+    p.push(`cards.json > paths: duplicate id "${id}"`);
+  for (const type of Object.keys(d.cards.typeWeights)) {
+    const n = d.cards.paths.filter((x) => x.types.includes(type as never)).length;
+    if (n !== 1) p.push(`cards.json > paths: card type "${type}" must be in exactly one path, found ${n}`);
+  }
+
   // Muzzle pieces: perLevel only grows numbers the piece has.
   for (const m of d.muzzles.pieces) {
     if (Object.keys(m.base).length === 0) p.push(`muzzles.json > ${m.id}: base has no stats`);

@@ -1,6 +1,22 @@
 {
   "baseRerolls": 1,
   "cardsPerLevelUp": 3,
+  "paths": [
+    {
+      "id": "gods",
+      "name": "Favor of the Gods",
+      "description": "Elements for the barrel, and blessings that raise your stats for this run.",
+      "color": "#f2d23a",
+      "types": ["element", "runStat"]
+    },
+    {
+      "id": "gunsmith",
+      "name": "Gunsmith",
+      "description": "Barrel modules, fittings, muzzle pieces, magazine work and Core Tier.",
+      "color": "#b8c4d6",
+      "types": ["grey", "fitting", "muzzle", "supportPerk", "coreTier", "tinker"]
+    }
+  ],
   "randomUpgrade": {
     "upgrades": 2
   },
@@ -11,7 +27,8 @@
     "coreTier": 1.5,
     "runStat": 3,
     "supportPerk": 2,
-    "muzzle": 2
+    "muzzle": 2,
+    "tinker": 1
   },
   "fusesWithOwnedMult": 3,
   "rarity": {

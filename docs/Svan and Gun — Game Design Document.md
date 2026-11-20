@@ -322,13 +322,22 @@ Aim for 8–10 chests in a full run: enough to fill the 6 slots and still upgrad
 - Once every slot is full, chests keep their purpose through upgrades, so a late chest always improves something the player already owns.
 - An item that is replaced is salvaged into scrap (open question: or silver).
 
-**Build sheet (C)** shows the 6 worn items with their level, rarity and stats, next to the barrel and support perks.
+**Build sheet (C)** shows a paper doll with the 6 equipment slots (built 2026-11-21, empty until items exist), stats, blessings, magazine work, and the gun drawn as core → barrel → muzzle. Items will show their level, rarity and stats there.
 
 ## In-run progression and roguelike elements
 
-Killed enemies drop **scrap** (XP). Each full scrap bar is a level-up: the game pauses at the workbench and the player picks 1 of 3 random cards. Everything gained in a run is lost when it ends, except silver.
+Killed enemies drop **scrap** (XP). Each full scrap bar is a level-up: the game pauses at the workbench, the player first picks a **path**, then 1 of 3 cards drawn only from that path (decided 2026-11-21, so the player steers the build instead of reacting to random cards).
 
-**Level-up cards** (3 are drawn from these types; only valid ones appear):
+| Path | Offers |
+| --- | --- |
+| **Favor of the Gods** | Elements (Ember Shot, Venom Shot, Thunder Spark) and **blessings** (the run stat cards: +move speed, +max HP…; they move onto items once items exist) |
+| **Gunsmith** | Grey barrel modules, fittings, muzzle pieces, magazine work (the support perks), Core Tier, Tinker |
+
+- Choosing a path is a commitment for that level-up: there is no going back to look at the other path. The reroll redraws the 3 cards within the chosen path.
+- Chests use the same flow (path, then card).
+- Paths and which card types they hold live in `cards.json > paths`. Everything gained in a run is lost when it ends, except silver.
+
+**Level-up cards** (3 are drawn from the chosen path's types; only valid ones appear):
 
 | Card type | Example | Shown when |
 | --- | --- | --- |

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH, SceneKeys, UiColors } from '../config';
-import type { GameData, GunDef } from '../data/types';
+import type { CardPathDef, GameData, GunDef } from '../data/types';
 import type { Card, ModSlot, RunBuild, SupportLevels } from '../systems/build';
 import { modDef, type FusionEvent } from '../systems/fusion';
 import type { Pipeline } from '../systems/modPipeline';
@@ -15,6 +15,7 @@ import {
   muzzleColor,
   muzzleDescription,
   muzzleEffects,
+  pathContents,
   roman,
 } from '../ui/cardText';
 import { createButton } from '../ui/button';
@@ -33,6 +34,12 @@ export interface LevelUpController {
   pipeline(): Pipeline;
   gun(): GunDef;
   support(): Readonly<SupportLevels>;
+  /** Level-up paths (Favor of the Gods, Gunsmith). */
+  paths(): readonly CardPathDef[];
+  /** The path picked for this choice, or null while the player still has to pick one. */
+  path(): string | null;
+  /** Pick a path: the hand is then drawn from it. */
+  choosePath(id: string): void;
   cards(): Card[];
   rerollsLeft(): number;
   reroll(): void;
@@ -115,8 +122,9 @@ interface SlotView extends SlotRef {
 }
 
 /**
- * Level-up workbench (Colossatron-style): game paused, 3 cards, reroll, and the gun: core, barrel
- * and muzzle.
+ * Level-up workbench (Colossatron-style): game paused. First pick a PATH (Favor of the Gods or
+ * Gunsmith), then 1 of 3 cards from it (reroll stays in the path). Below: the gun, core → barrel
+ * → muzzle.
  * - DRAG a module card onto a barrel slot. An empty slot takes it; on a filled slot it is inserted
  *   and the others slide over. Matches that end up side by side merge at once, step by step.
  *   While dragging, the slot under the pointer shows what will happen.
@@ -208,6 +216,8 @@ export class LevelUpScene extends Phaser.Scene {
       );
     } else if (this.ctl.palette) {
       this.drawPalette(this.ctl.palette());
+    } else if (this.ctl.path() === null) {
+      this.drawPaths();
     } else {
       const more = this.ctl.queuedAfter();
       this.root.add(this.text(cx, 60, this.ctl.title(), 36, UiColors.accent, 'bold').setOrigin(0.5));
@@ -227,6 +237,61 @@ export class LevelUpScene extends Phaser.Scene {
       );
     }
     this.drawGun(barrel ?? this.ctl.build().barrel, flash);
+  }
+
+  /** Step 1: pick a path. Each panel lists what its cards can be. */
+  private drawPaths(): void {
+    const cx = GAME_WIDTH / 2;
+    const more = this.ctl.queuedAfter();
+    this.root.add(this.text(cx, 60, this.ctl.title(), 36, UiColors.accent, 'bold').setOrigin(0.5));
+    this.root.add(
+      this.text(
+        cx,
+        98,
+        more > 0 ? `Choose a path  ·  ${more} more after this` : 'Choose a path',
+        16,
+        UiColors.textDim,
+      ).setOrigin(0.5),
+    );
+    const paths = this.ctl.paths();
+    const w = 470;
+    const h = 300;
+    paths.forEach((path, i) => {
+      const x = cx + (i - (paths.length - 1) / 2) * (w + 40);
+      const color = parseInt(path.color.slice(1), 16);
+      const box = this.add.rectangle(x, CARD_Y + 5, w, h, 0x1f232b).setStrokeStyle(3, color);
+      box.setInteractive({ useHandCursor: true });
+      box.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => box.setFillStyle(0x2c323d));
+      box.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => box.setFillStyle(0x1f232b));
+      box.on(Phaser.Input.Events.GAMEOBJECT_POINTER_UP, () => this.pickPath(path.id));
+      const top = CARD_Y + 5 - h / 2;
+      this.root.add([
+        box,
+        this.text(x, top + 22, `[${i + 1}]  PATH`, 13, path.color, 'bold').setOrigin(0.5),
+        this.text(x, top + 60, path.name, 30, path.color, 'bold').setOrigin(0.5),
+        this.text(x, top + 100, path.description, 15, UiColors.text)
+          .setOrigin(0.5, 0)
+          .setWordWrapWidth(w - 50)
+          .setAlign('center'),
+        this.text(
+          x - w / 2 + 30,
+          top + 150,
+          pathContents(this.gd, path)
+            .map((l) => `•  ${l}`)
+            .join('\n'),
+          14,
+          UiColors.textDim,
+        )
+          .setWordWrapWidth(w - 60)
+          .setLineSpacing(6),
+      ]);
+    });
+  }
+
+  private pickPath(id: string): void {
+    if (this.animating || this.ctl.path() !== null) return;
+    this.ctl.choosePath(id);
+    this.render();
   }
 
   /** Workbench: every module and muzzle piece as a draggable chip, grouped, plus Done. */
@@ -662,6 +727,11 @@ export class LevelUpScene extends Phaser.Scene {
       return;
     }
     const n = Number(e.key);
+    if (this.ctl.path() === null) {
+      const paths = this.ctl.paths();
+      if (n >= 1 && n <= paths.length) this.pickPath(paths[n - 1]!.id);
+      return;
+    }
     const cards = this.ctl.cards();
     if (n >= 1 && n <= cards.length) this.choose(cards[n - 1]!);
     else if (e.key === 'r' || e.key === 'R') this.doReroll();

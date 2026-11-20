@@ -11,7 +11,7 @@
  * - muzzle cards are always valid (same piece = upgrade, else fit or replace).
  */
 import type { RNG } from '../core/rng';
-import type { GameData, GunDef, ModFamily, Rarity, StatId, StatMode } from '../data/types';
+import type { CardType, GameData, GunDef, ModFamily, Rarity, StatId, StatMode } from '../data/types';
 import { fusesWithOwned, modDef, moveModule, place, type FusionEvent } from './fusion';
 import { layoutOf } from './modPipeline';
 import { placeMuzzle, type MuzzleSlot } from './muzzle';
@@ -77,6 +77,30 @@ export function unlockedSlots(data: GameData, level: number, slotCount: number):
   let open = 0;
   for (let i = 0; i < slotCount; i++) if (level >= (levels[i] ?? levels[levels.length - 1] ?? 1)) open++;
   return open;
+}
+
+/** The card's type for weights and paths (module cards by family). */
+export function cardType(card: Card): CardType {
+  switch (card.type) {
+    case 'module':
+      if (card.family === 'hybrid') throw new Error('Hybrids are never cards');
+      return card.family;
+    case 'randomUpgrade':
+      return 'tinker';
+    case 'coreTier':
+    case 'runStat':
+    case 'supportPerk':
+    case 'muzzle':
+      return card.type;
+  }
+}
+
+/** Which level-up path a card belongs to (cards.json > paths). */
+export function pathOf(data: GameData, card: Card): string {
+  const type = cardType(card);
+  const path = data.cards.paths.find((p) => p.types.includes(type));
+  if (!path) throw new Error(`Card type "${type}" is in no path`);
+  return path.id;
 }
 
 /** A stable key: two cards with the same key are the same offer. */
@@ -155,7 +179,10 @@ export function rollRarity(data: GameData, level: number, rng: RNG): Rarity {
   });
 }
 
-/** Draw `count` distinct valid cards (TDD: CardDraw). */
+/**
+ * Draw `count` distinct valid cards (TDD: CardDraw). With `path`, only that path's card types
+ * (cards.json > paths) are in the pool.
+ */
 export function drawCards(
   data: GameData,
   build: RunBuild,
@@ -163,9 +190,10 @@ export function drawCards(
   rng: RNG,
   support: SupportLevels = {},
   count = data.cards.cardsPerLevelUp,
+  path: string | null = null,
 ): Card[] {
-  const pool: [Card, number][] = [...candidateCards(data, build, support)];
-  // Run stat perks share the runStat weight; Tinker weighs the same as one perk.
+  let pool: [Card, number][] = [...candidateCards(data, build, support)];
+  // Blessings (run stat cards) share the runStat weight.
   const perkWeight = data.cards.typeWeights.runStat / data.cards.runStats.length;
   for (const rs of data.cards.runStats) {
     pool.push([
@@ -174,7 +202,8 @@ export function drawCards(
     ]);
   }
   const tinker = rollTinker(data, build, rng);
-  if (tinker) pool.push([tinker, perkWeight]);
+  if (tinker) pool.push([tinker, data.cards.typeWeights.tinker]);
+  if (path !== null) pool = pool.filter(([c]) => pathOf(data, c) === path);
 
   const hand: Card[] = [];
   while (hand.length < count && pool.length > 0) {

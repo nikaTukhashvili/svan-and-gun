@@ -4,6 +4,7 @@ import type {
   BehaviourSchema,
   BossSchema,
   BuffSchema,
+  CardPathSchema,
   CardsSchema,
   CardTypeSchema,
   ConfigSchema,
@@ -50,6 +51,7 @@ export type TimelineSegment = z.infer<typeof TimelineSegmentSchema>;
 export type TimelineEvent = z.infer<typeof TimelineEventSchema>;
 export type CardsDef = z.infer<typeof CardsSchema>;
 export type CardType = z.infer<typeof CardTypeSchema>;
+export type CardPathDef = z.infer<typeof CardPathSchema>;
 export type Rarity = z.infer<typeof RaritySchema>;
 export type BuffDef = z.infer<typeof BuffSchema>;
 export type DropsDef = z.infer<typeof DropsSchema>;

@@ -5,9 +5,11 @@ import {
   applyCard,
   candidateCards,
   cardKey,
+  cardType,
   createBuild,
   drawCards,
   isCardValid,
+  pathOf,
   rollTinker,
   swapSlots,
   unlockedSlots,
@@ -204,5 +206,36 @@ describe('Tinker (random +1 tiers)', () => {
     swapSlots(data, null, t.build, 0, 3);
     applyCard(data, null, t, card);
     expect(t.build.barrel[3]).toEqual({ id: 'ricochet', tier: 2 });
+  });
+});
+
+describe('level-up paths', () => {
+  const pathTypes = (id: string) => data.cards.paths.find((p) => p.id === id)!.types as readonly string[];
+
+  it('Favor of the Gods offers elements and blessings; Gunsmith offers the rest', () => {
+    expect([...pathTypes('gods')].sort()).toEqual(['element', 'runStat']);
+    expect(pathTypes('gunsmith')).toEqual(
+      expect.arrayContaining(['grey', 'fitting', 'muzzle', 'supportPerk', 'coreTier', 'tinker']),
+    );
+  });
+
+  it('a hand drawn from a path only has that path’s cards (over many seeds)', () => {
+    for (const path of data.cards.paths) {
+      for (let seed = 1; seed <= 100; seed++) {
+        const t = target();
+        t.build.barrel[0] = { id: 'twin_shot', tier: 1 }; // so Tinker can show up
+        const hand = drawCards(data, t.build, 5, new RNG(seed), t.support, 3, path.id);
+        expect(hand).toHaveLength(3);
+        for (const c of hand) expect(pathOf(data, c), `${path.id} seed ${seed}`).toBe(path.id);
+      }
+    }
+  });
+
+  it('every card type maps to a path', () => {
+    const t = target();
+    t.build.barrel[0] = { id: 'twin_shot', tier: 1 };
+    const all = drawCards(data, t.build, 5, new RNG(1), t.support, 999);
+    const types = new Set(all.map(cardType));
+    for (const type of types) expect(data.cards.paths.some((p) => p.types.includes(type))).toBe(true);
   });
 });
