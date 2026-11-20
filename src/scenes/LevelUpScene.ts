@@ -34,6 +34,13 @@ export interface LevelUpController {
   /** True while there is another choice to make. */
   hasMore(): boolean;
   close(): void;
+  /**
+   * Workbench mode (Training Ground): instead of 3 cards, every module id here can be dragged onto
+   * the barrel as often as wanted, and the screen stays open until closed (Esc / Done).
+   */
+  palette?(): readonly string[];
+  /** Workbench mode: a module dragged off the barrel is removed. */
+  remove?(slot: number): void;
 }
 
 const FONT = 'system-ui, sans-serif';
@@ -44,6 +51,9 @@ const BARREL_Y = 585;
 const SLOT_H = 76;
 /** Pointer travel (px) before a press becomes a drag. */
 const DRAG_START = 8;
+/** Workbench palette chips. */
+const CHIP_W = 150;
+const CHIP_H = 46;
 /** Pause between merge steps, so each fusion can be seen. */
 const STEP_MS = 320;
 const css = (c: number) => '#' + c.toString(16).padStart(6, '0');
@@ -71,6 +81,8 @@ interface SlotView {
  * - Drag a module in the barrel to another slot to move it (or swap with what is there).
  * - Clicking a module card (or pressing its number) also works: then click a slot or press the
  *   slot's number. Other cards apply on click. A replace (full barrel half) asks for confirmation.
+ * - Workbench mode (Training Ground, `controller.palette`): a palette of every module instead of
+ *   cards, no limit, drag a module off the barrel to remove it, Esc / Done closes.
  */
 export class LevelUpScene extends Phaser.Scene {
   private ctl!: LevelUpController;
@@ -140,6 +152,8 @@ export class LevelUpScene extends Phaser.Scene {
       this.root.add(
         createButton(this, cx, 360, 'Back  [Esc]', () => this.cancelPlacing(), { width: 220, fontSize: 22 }),
       );
+    } else if (this.ctl.palette) {
+      this.drawPalette(this.ctl.palette());
     } else {
       const more = this.ctl.queuedAfter();
       this.root.add(this.text(cx, 60, this.ctl.title(), 36, UiColors.accent, 'bold').setOrigin(0.5));
@@ -159,6 +173,50 @@ export class LevelUpScene extends Phaser.Scene {
       );
     }
     this.drawBarrel(barrel ?? this.ctl.build().barrel, flashAt);
+  }
+
+  /** Workbench: every module as a draggable chip, grouped by family, plus Done. */
+  private drawPalette(ids: readonly string[]): void {
+    const cx = GAME_WIDTH / 2;
+    this.root.add(this.text(cx, 40, 'Workbench', 32, UiColors.accent, 'bold').setOrigin(0.5));
+    this.root.add(
+      this.text(
+        cx,
+        76,
+        'Drag modules onto the barrel (as many as you like)  ·  drag a module off the barrel to remove it',
+        15,
+        UiColors.textDim,
+      ).setOrigin(0.5),
+    );
+    const families = ['element', 'hybrid', 'grey', 'fitting'] as const;
+    let y = 120;
+    for (const family of families) {
+      const row = ids.filter((id) => modDef(this.gd, id).family === family);
+      if (row.length === 0) continue;
+      const gap = 10;
+      const w = row.length * CHIP_W + (row.length - 1) * gap;
+      row.forEach((id, i) => this.drawChip(id, cx - w / 2 + CHIP_W / 2 + i * (CHIP_W + gap), y + CHIP_H / 2));
+      y += CHIP_H + 14;
+    }
+    this.root.add(
+      createButton(this, cx, 455, 'Done  [Esc]', () => this.closeScreen(), { width: 220, fontSize: 22 }),
+    );
+  }
+
+  private drawChip(modId: string, x: number, y: number): void {
+    const def = modDef(this.gd, modId);
+    const color = modColor(this.gd, modId);
+    const chip = this.add.rectangle(x, y, CHIP_W, CHIP_H, color, 0.3).setStrokeStyle(2, color);
+    chip.setInteractive({ useHandCursor: true });
+    chip.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => {
+      if (!this.drag) this.showTip(modDescription(this.gd, modId, 1), UiColors.textDim);
+    });
+    chip.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, (p: Phaser.Input.Pointer) => {
+      if (this.animating) return;
+      const card: Card = { type: 'module', modId, family: def.family, fuses: false };
+      this.drag = { kind: 'card', card, x0: p.x, y0: p.y, moved: false, ghost: null };
+    });
+    this.root.add([chip, this.text(x, y, def.name, 14, UiColors.text, 'bold').setOrigin(0.5)]);
   }
 
   private drawCard(card: Card, x: number, y: number, index: number): void {
@@ -389,6 +447,12 @@ export class LevelUpScene extends Phaser.Scene {
     }
     const slot = this.slotAt(p.x, p.y);
     if (slot === null) {
+      // Workbench: a barrel module dropped away from the barrel is removed.
+      if (d.kind === 'module' && this.ctl.remove && p.y < BARREL_Y - SLOT_H) {
+        this.ctl.remove(d.from);
+        this.render();
+        return;
+      }
       this.showTip('', UiColors.textDim);
       return;
     }
@@ -404,6 +468,10 @@ export class LevelUpScene extends Phaser.Scene {
       const slot = Number(e.key) - 1;
       if (e.key === 'Escape') this.cancelPlacing();
       else if (slot >= 0 && slot < this.ctl.unlocked()) this.clickSlot(slot);
+      return;
+    }
+    if (this.ctl.palette) {
+      if (e.key === 'Escape') this.closeScreen();
       return;
     }
     const n = Number(e.key);
@@ -496,10 +564,12 @@ export class LevelUpScene extends Phaser.Scene {
 
   private afterPick(): void {
     if (this.ctl.hasMore()) this.render();
-    else {
-      this.ctl.close();
-      this.scene.stop();
-    }
+    else this.closeScreen();
+  }
+
+  private closeScreen(): void {
+    this.ctl.close();
+    this.scene.stop();
   }
 
   private text(

@@ -78,3 +78,39 @@ test('switching the gun in the panel restarts the Training Ground with that gun'
   await page.waitForFunction(() => window.__svan?.run?.playground !== undefined);
   await expect(page.getByTestId('playground-panel')).toHaveCount(1);
 });
+
+test('B opens the workbench: drag modules onto the barrel, merge, remove, close', async ({ page }) => {
+  const errors = trackErrors(page);
+  await openFromMenu(page);
+  await page.keyboard.press('b');
+  await page.waitForFunction(() => window.__svan!.activeScenes().includes('levelUp'));
+  await expect(page.getByTestId('playground-panel')).toBeHidden(); // out of the way of the barrel
+
+  const drag = async (from: [number, number], to: [number, number]) => {
+    const a = await gamePoint(page, from[0], from[1]);
+    const b = await gamePoint(page, to[0], to[1]);
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    await page.mouse.move(b.x, b.y, { steps: 10 });
+    await page.mouse.up();
+    await page.waitForTimeout(900); // the merge animation
+  };
+  const barrel = () =>
+    page.evaluate(() => window.__svan!.run!.build().barrel.map((s) => (s ? `${s.id}:${s.tier}` : null)));
+  const EMBER: [number, number] = [480, 143]; // first chip of the element row
+  const slot = (i: number): [number, number] => [118 + i * 132, 585];
+
+  await drag(EMBER, slot(0));
+  await drag(EMBER, slot(3)); // not touching: two separate Ember Shots
+  expect((await barrel()).slice(0, 4)).toEqual(['ember_shot:1', null, null, 'ember_shot:1']);
+  await drag(EMBER, slot(1)); // next to the first one: they merge
+  expect((await barrel()).slice(0, 4)).toEqual([null, 'ember_shot:2', null, 'ember_shot:1']);
+  await page.screenshot({ path: test.info().outputPath('workbench.png') });
+  await drag(slot(3), [640, 300]); // dragged off the barrel: removed
+  expect((await barrel())[3]).toBeNull();
+
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !window.__svan!.activeScenes().includes('levelUp'));
+  await expect(page.getByTestId('playground-panel')).toBeVisible();
+  expect(errors).toEqual([]);
+});

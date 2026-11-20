@@ -35,6 +35,8 @@ export interface PlaygroundController {
   resetPerks(): void;
   resetMeters(): void;
   respawnDummies(): void;
+  /** The real level-up screen in Workbench mode: drag and drop every module. */
+  openWorkbench(): void;
   clearEnemies(): void;
   spawnEnemies(id: string, count: number, elite: boolean): void;
   godMode(): boolean;
@@ -74,6 +76,7 @@ const CSS = `
 #svan-playground .readout b { color: #f2b632; font-weight: normal; }
 #svan-playground .buttons { display: flex; flex-wrap: wrap; gap: 4px; }
 #svan-playground .grid2 { display: grid; grid-template-columns: 1fr auto; gap: 2px 6px; align-items: center; }
+#svan-playground button.wide { width: 100%; margin: 2px 0 6px; padding: 5px; border-color: #f2b632; }
 #svan-playground .good { color: #7be08a; font-weight: bold; }
 #svan-playground .bad { color: #ff7a6b; font-weight: bold; }
 `;
@@ -171,8 +174,15 @@ export class PlaygroundPanel {
     sections.push(el('h3', {}, 'Gun'), el('div', { class: 'row' }, gunSel));
 
     // Barrel
+    const bench = this.button(
+      'Open workbench: drag and drop  [B]',
+      () => this.ctl.openWorkbench(),
+      'playground-workbench',
+    );
+    bench.classList.add('wide');
     sections.push(
       el('h3', {}, 'Barrel'),
+      bench,
       this.checkbox('Fuse on place / swap (like a run)', this.fuse, (on) => {
         this.fuse = on;
       }),

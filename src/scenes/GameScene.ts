@@ -1017,6 +1017,53 @@ export class GameScene extends Phaser.Scene {
 
   // ---------- Training Ground (dev tool) ----------
 
+  /** Training Ground: the level-up screen in Workbench mode (every module, drag and drop). */
+  private openWorkbench(): void {
+    if (this.levelUpOpen || this.pauseOpen || this.ended) return;
+    const d = this.gd;
+    const all = () => this.run.build.barrel.length;
+    const changed = <T>(value: T): T => {
+      this.refreshStats();
+      this.pg?.panel?.render();
+      return value;
+    };
+    const controller: LevelUpController = {
+      title: () => 'Workbench',
+      queuedAfter: () => 0,
+      build: () => this.run.build,
+      unlocked: all,
+      unlockLevel: () => 1,
+      pipeline: () => this.pipeline,
+      gun: () => this.gun,
+      support: () => this.run.support,
+      cards: () => [],
+      rerollsLeft: () => 0,
+      reroll: () => {},
+      pick: (card, slot) => changed(applyCard(d, this.gun, this.run, card, slot, all())),
+      move: (a, b) => changed(swapSlots(d, this.gun, this.run.build, a, b)),
+      previewPlace: (slot, modId) =>
+        previewPlace(d, this.run.build, this.layout(), slot, { id: modId, tier: 1 }, all()).events,
+      previewMove: (a, b) => previewMove(d, this.run.build, this.layout(), a, b).events,
+      hasMore: () => true,
+      close: () => {
+        this.levelUpOpen = false;
+        if (panelWasOpen) this.pg?.panel?.toggle();
+        this.scene.resume();
+      },
+      palette: () => d.barrelMods.map((m) => m.id),
+      remove: (slot) => {
+        this.run.build.barrel[slot] = null;
+        changed(null);
+      },
+    };
+    // The HTML panel sits over the left of the screen: hide it while the workbench is up.
+    const panelWasOpen = this.pg?.panel?.visible ?? false;
+    if (panelWasOpen) this.pg?.panel?.toggle();
+    this.levelUpOpen = true;
+    this.scene.pause();
+    this.scene.launch(SceneKeys.LevelUp, { controller });
+  }
+
   private startPlayground(opts: PlaygroundOptions): void {
     const helper = new Playground(this, this.gd, this.enemies, this.bus, () => this.run.timeSec);
     this.pg = { helper, panel: null, opts };
@@ -1028,7 +1075,8 @@ export class GameScene extends Phaser.Scene {
       e.preventDefault();
       panel.toggle();
     });
-    this.showMessage('Training Ground · F2 toggles the dev panel', 4);
+    this.input.keyboard?.on('keydown-B', () => this.openWorkbench());
+    this.showMessage('Training Ground · F2 dev panel · B workbench (drag and drop)', 5);
   }
 
   private restartPlayground(gunId: string): void {
@@ -1123,6 +1171,7 @@ export class GameScene extends Phaser.Scene {
         pg().panel?.refreshReadout();
       },
       respawnDummies: () => pg().helper.respawn(),
+      openWorkbench: () => this.openWorkbench(),
       clearEnemies: () => {
         for (const e of this.enemies.enemies) if (e.active && !e.immortal) this.enemies.release(e);
         this.projectiles.releaseAll();
