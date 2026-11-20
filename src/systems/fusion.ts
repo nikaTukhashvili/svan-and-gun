@@ -3,7 +3,7 @@
  *
  * - Tier = how many copies are fused into a module. No cap. A new card is tier 1.
  * - Fusing ADDS tiers: same module + same module → that module; element + a different element →
- *   their hybrid; hybrid + one of its parent elements (or the same hybrid) → the hybrid.
+ *   their hybrid. A hybrid grows only from the same hybrid (its parent elements do not feed it).
  *   Grey modules only fuse with themselves. Fittings never fuse.
  * - Placing (dragging a card onto a slot): an empty slot takes it; on a filled slot it is inserted
  *   and the modules on one side slide towards the nearest empty slot. Matches that end up side by
@@ -63,11 +63,6 @@ export function fuseResult(data: GameData, a: ModSlot, b: ModSlot): ModSlot | nu
   if (da.family === 'fitting' || db.family === 'fitting') return null;
   const tier = a.tier + b.tier;
   if (da.id === db.id) return { id: da.id, tier };
-  // A hybrid absorbs one of its parent elements.
-  if (da.family === 'hybrid' && db.family === 'element' && da.parents.includes(db.element))
-    return { id: da.id, tier };
-  if (db.family === 'hybrid' && da.family === 'element' && db.parents.includes(da.element))
-    return { id: db.id, tier };
   // Two different elements make their hybrid.
   if (da.family === 'element' && db.family === 'element') {
     const h = data.barrelMods.find(

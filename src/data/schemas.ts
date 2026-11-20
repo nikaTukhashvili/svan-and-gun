@@ -140,7 +140,7 @@ export const ElementSchema = z.enum(['fire', 'poison', 'lightning']);
 /**
  * Barrel module families (GDD: Barrel fusion):
  * - element: fuses with the same element, or with a different element into a hybrid;
- * - hybrid: made from two elements; grows from either parent or the same hybrid;
+ * - hybrid: made from two elements; grows only from the same hybrid;
  * - grey: projectile shape; grows from the same module;
  * - fitting: directional, never fuses; multiplies its neighbours' strength.
  */

@@ -208,3 +208,4 @@ _Add dated notes here as tasks complete (decisions, deviations, follow-ups)._
 - Level-up screen: pick a card; a module card asks for a slot, with a hover preview of the fusion cascade, by click or number key; a replace asks twice; swaps fuse too. The Training Ground panel has tiers, a "fuse on place" option and support perks.
 - Tests: 198 unit tests (new `fusion.test.ts`; `operators.test.ts` removed). Every e2e spec passes when run one at a time, including a fusion placement test and a layout screenshot per gun.
 - Balance is untested: hybrid and fitting numbers are first guesses, to tune in the Training Ground.
+- Playtest change (same day): a hybrid grows **only from the same hybrid**. Feeding it a parent element (Plasma II + Thunder → Plasma III) felt wrong, so elements no longer fuse into a hybrid.

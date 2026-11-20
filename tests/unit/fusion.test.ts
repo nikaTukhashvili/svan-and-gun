@@ -42,9 +42,9 @@ describe('fuseResult: tiers add, with no cap', () => {
     expect(fuseResult(data, m('thunder_spark'), m('venom_shot'))).toEqual(m('blight_arc', 2));
   });
 
-  it('a hybrid grows from either parent or the same hybrid, but not the third element', () => {
-    expect(fuseResult(data, m('plasma', 5), m('ember_shot'))).toEqual(m('plasma', 6));
-    expect(fuseResult(data, m('thunder_spark'), m('plasma', 5))).toEqual(m('plasma', 6));
+  it('a hybrid grows only from the same hybrid: no element feeds it', () => {
+    expect(fuseResult(data, m('plasma', 5), m('ember_shot'))).toBeNull();
+    expect(fuseResult(data, m('thunder_spark'), m('plasma', 5))).toBeNull();
     expect(fuseResult(data, m('plasma', 2), m('plasma', 2))).toEqual(m('plasma', 4));
     expect(fuseResult(data, m('plasma'), m('venom_shot'))).toBeNull();
     expect(fuseResult(data, m('plasma'), m('brimstone'))).toBeNull();
@@ -201,7 +201,7 @@ describe('moveModule and helpers', () => {
 
   it('fusesWithOwned: a card that would fuse with something in the barrel', () => {
     const b = barrel(['plasma:3', 'twin_shot']);
-    expect(fusesWithOwned(data, b, 'ember_shot')).toBe(true);
+    expect(fusesWithOwned(data, b, 'ember_shot')).toBe(false); // elements never feed a hybrid
     expect(fusesWithOwned(data, b, 'twin_shot')).toBe(true);
     expect(fusesWithOwned(data, b, 'venom_shot')).toBe(false);
     expect(fusesWithOwned(data, b, 'brace')).toBe(false);

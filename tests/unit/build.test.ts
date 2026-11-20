@@ -80,14 +80,14 @@ describe('module cards', () => {
 
   it('a module that would fuse with one in the barrel weighs more and says so', () => {
     const build = createBuild();
-    build.barrel[0] = { id: 'plasma', tier: 3 };
+    build.barrel[0] = { id: 'twin_shot', tier: 3 };
     const cards = candidateCards(data, build);
     const weight = (id: string) => cards.find(([c]) => c.type === 'module' && c.modId === id)!;
-    const [fire, fireW] = weight('ember_shot');
-    const [venom, venomW] = weight('venom_shot');
-    expect(fire.type === 'module' && fire.fuses).toBe(true);
-    expect(venom.type === 'module' && venom.fuses).toBe(false);
-    expect(fireW / venomW).toBeCloseTo(data.cards.fusesWithOwnedMult);
+    const [twin, twinW] = weight('twin_shot');
+    const [rico, ricoW] = weight('ricochet');
+    expect(twin.type === 'module' && twin.fuses).toBe(true);
+    expect(rico.type === 'module' && rico.fuses).toBe(false);
+    expect(twinW / ricoW).toBeCloseTo(data.cards.fusesWithOwnedMult);
   });
 
   it('a module card needs a slot; placing it next to a match fuses', () => {

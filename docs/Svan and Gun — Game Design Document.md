@@ -165,7 +165,7 @@ The barrel is a row of slots. Each slot holds one **module**. Where a module sit
 | Family | Modules | Fuses with |
 | --- | --- | --- |
 | Element (colour) | Ember Shot (fire, red), Venom Shot (poison, green), Thunder Spark (lightning, yellow) | The same element; or a different element, making their hybrid |
-| Hybrid (mixed colour) | Plasma = fire + lightning (orange), Brimstone = fire + poison (amber), Blight Arc = poison + lightning (teal) | Either parent element, or the same hybrid. Never offered as a card: only made by fusing |
+| Hybrid (mixed colour) | Plasma = fire + lightning (orange), Brimstone = fire + poison (amber), Blight Arc = poison + lightning (teal) | Only the same hybrid (its parent elements do not feed it). Never offered as a card: only made by fusing |
 | Grey | Twin Shot, Ricochet, Long Rifling, Piercing Bore, Heavy Slug, Split Shot | Only the same module |
 | Fitting (directional) | Booster ▶, ◀ Booster, ◀ Brace ▶, Overcharger, Siphon | Never fuses |
 
