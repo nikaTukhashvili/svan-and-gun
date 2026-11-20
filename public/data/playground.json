@@ -1,0 +1,53 @@
+{
+  "map": "playground",
+  "dummies": [
+    {
+      "id": "dummy_plain",
+      "name": "Dummy",
+      "hp": 1000,
+      "defence": 0,
+      "radius": 0.6,
+      "visual": { "color": "#c8a46e", "shape": "circle" }
+    },
+    {
+      "id": "dummy_armoured",
+      "name": "Armoured Dummy",
+      "hp": 1000,
+      "defence": 8,
+      "radius": 0.7,
+      "visual": { "color": "#7d8590", "shape": "hexagon" }
+    },
+    {
+      "id": "dummy_pack",
+      "name": "Pack Dummy",
+      "hp": 300,
+      "defence": 0,
+      "radius": 0.4,
+      "visual": { "color": "#b98c5a", "shape": "square" }
+    },
+    {
+      "id": "dummy_mover",
+      "name": "Moving Dummy",
+      "hp": 1000,
+      "defence": 0,
+      "radius": 0.6,
+      "visual": { "color": "#d6c27a", "shape": "diamond" },
+      "patrol": { "dx": 0, "dy": 10, "speed": 3.5 }
+    }
+  ],
+  "layout": [
+    { "dummy": "dummy_plain", "x": 32, "y": 20 },
+    { "dummy": "dummy_armoured", "x": 32, "y": 14 },
+    { "dummy": "dummy_pack", "x": 32, "y": 25.5 },
+    { "dummy": "dummy_pack", "x": 33.2, "y": 25.5 },
+    { "dummy": "dummy_pack", "x": 32.6, "y": 26.6 },
+    { "dummy": "dummy_pack", "x": 33.8, "y": 26.6 },
+    { "dummy": "dummy_pack", "x": 32, "y": 27.7 },
+    { "dummy": "dummy_pack", "x": 33.2, "y": 27.7 },
+    { "dummy": "dummy_mover", "x": 40, "y": 15 }
+  ],
+  "dpsWindowSec": 3,
+  "idleResetSec": 3,
+  "minSessionSec": 1,
+  "labelRefreshSec": 0.25
+}

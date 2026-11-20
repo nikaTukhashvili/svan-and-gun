@@ -192,3 +192,10 @@ _Add dated notes here as tasks complete (decisions, deviations, follow-ups)._
 - Tests: 169 unit tests (new operators.test.ts covers the user's Fire | ×2 | Lightning example, each operator, and each gun twist). upgrades.spec passes, including a layout screenshot per gun.
 - Balance note: barrel lengths now differ, so the T36 playtest should compare guns at the same run time.
 
+**2026-11-20 · Dev tool: Training Ground (branch `dev-tools`)**
+
+- Menu > Training Ground: always in `npm run dev`; on the hosted build only with `?dev`. A small open map (`maps/playground.json`) with no spawn timeline, no drops, no level-ups, god mode on and market buffs off by default.
+- Immortal dummies from `data/playground.json`: plain, armoured (defence 8), a pack of 6 (pierce, split, ricochet, chains, explosions) and a moving one. They refill instead of dying, and each full hit still counts, so DPS is not capped by HP.
+- `DpsMeter` (pure, unit tested): rolling DPS, session average, peak, total, hits, crits and status damage. A label over each dummy kind; the pack's numbers are its six members added up. `enemy:damaged` now carries the enemy `uid`.
+- F2 HTML panel: gun, every slot (mod, level, order), Core Tier, perks (C/R/E), Reset build/perks/meters, Respawn dummies, Clear/Spawn enemies, God mode, Market buffs, and an all-target readout. The slot tag logic moved to `cardText.barrelSlotTag` (shared with the level-up screen).
+- Tests: 182 unit tests, new `playground.spec.ts` (3). Every e2e spec passes when run one at a time.

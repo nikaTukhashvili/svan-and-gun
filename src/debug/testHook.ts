@@ -7,6 +7,7 @@ import Phaser from 'phaser';
 import { SceneKeys } from '../config';
 import type { RunResult } from '../core/events';
 import type { RunBuild } from '../systems/build';
+import type { DpsStats } from '../systems/dpsMeter';
 import { freshSave, type SaveSystem, type SaveV1 } from '../systems/save';
 
 /** Snapshot of the current run for tests. Positions in units. */
@@ -68,6 +69,17 @@ export interface RunDebugApi {
   build(): RunBuild;
   setBuild(build: RunBuild): void;
   pickups(): { kind: string; value: number; x: number; y: number }[];
+  /** Present in the Training Ground only. */
+  playground?: PlaygroundDebugApi;
+}
+
+/** Training Ground (dev tool) hooks. */
+export interface PlaygroundDebugApi {
+  /** All targets together, or one target by Enemy uid. */
+  dps(uid?: number): DpsStats;
+  dummies(): { id: string; uid: number; alive: boolean; hp: number; maxHp: number; stats: DpsStats }[];
+  resetMeters(): void;
+  panelVisible(): boolean;
 }
 
 export interface SvanTestHook {
@@ -82,6 +94,8 @@ export interface SvanTestHook {
   fps(): number;
   /** Stop every scene and start a run with this gun and seed. */
   startRun(gunId: string, seed?: number): void;
+  /** Stop every scene and open the Training Ground with this gun. */
+  startPlayground(gunId: string): void;
   run?: RunDebugApi;
   /** The save (MetaState): read it, give silver, wipe it. */
   meta?: { state(): SaveV1; setSilver(n: number): void; reset(): void };
@@ -108,6 +122,10 @@ export function installTestHook(game: Phaser.Game): void {
     startRun: (gunId, seed = 1) => {
       for (const s of game.scene.getScenes(true)) game.scene.stop(s.sys.settings.key);
       game.scene.start(SceneKeys.Game, { gunId, seed });
+    },
+    startPlayground: (gunId) => {
+      for (const s of game.scene.getScenes(true)) game.scene.stop(s.sys.settings.key);
+      game.scene.start(SceneKeys.Game, { gunId, seed: 1, mode: 'playground' });
     },
   };
 }
