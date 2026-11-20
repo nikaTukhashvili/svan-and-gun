@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH, SceneKeys, UiColors } from '../config';
 import type { GameData, GunDef } from '../data/types';
-import type { Card, RunBuild, SupportLevels } from '../systems/build';
+import type { Card, ModSlot, RunBuild, SupportLevels } from '../systems/build';
 import { modDef, type FusionEvent } from '../systems/fusion';
 import type { Pipeline } from '../systems/modPipeline';
 import { barrelSlotTag, describeCard, describeEvents, modColor, modDescription, roman } from '../ui/cardText';
@@ -24,12 +24,13 @@ export interface LevelUpController {
   cards(): Card[];
   rerollsLeft(): number;
   reroll(): void;
-  /** Apply a card. A module card must come with the slot to put it in. */
-  pick(card: Card, slot?: number): void;
-  swap(a: number, b: number): void;
-  /** What placing a fresh module in `slot` would do (place / fuse cascade / replace). */
+  /** Apply a card. A module card must come with the slot it was dropped on. Returns the steps. */
+  pick(card: Card, slot?: number): FusionEvent[];
+  /** Drag a module to another slot (move, or swap with the module there). Returns the steps. */
+  move(from: number, to: number): FusionEvent[];
+  /** What dropping a fresh module on `slot` would do (place / insert / merges / replace). */
   previewPlace(slot: number, modId: string): FusionEvent[];
-  previewSwap(a: number, b: number): FusionEvent[];
+  previewMove(from: number, to: number): FusionEvent[];
   /** True while there is another choice to make. */
   hasMore(): boolean;
   close(): void;
@@ -38,14 +39,38 @@ export interface LevelUpController {
 const FONT = 'system-ui, sans-serif';
 const CARD_W = 340;
 const CARD_H = 290;
+const CARD_Y = 270;
+const BARREL_Y = 585;
 const SLOT_H = 76;
+/** Pointer travel (px) before a press becomes a drag. */
+const DRAG_START = 8;
+/** Pause between merge steps, so each fusion can be seen. */
+const STEP_MS = 320;
 const css = (c: number) => '#' + c.toString(16).padStart(6, '0');
 
+interface DragBase {
+  x0: number;
+  y0: number;
+  moved: boolean;
+  ghost: Phaser.GameObjects.Container | null;
+}
+type Drag = (DragBase & { kind: 'card'; card: Card }) | (DragBase & { kind: 'module'; from: number });
+
+interface SlotView {
+  i: number;
+  x: number;
+  rect: Phaser.GameObjects.Rectangle;
+  open: boolean;
+}
+
 /**
- * Level-up workbench: game paused, 3 cards, reroll, and the gun's barrel.
- * - Picking a module card enters placement: hover a slot to preview what happens (place, fuse
- *   and cascade, or replace), click to do it. Replacing asks for a second click. Esc goes back.
- * - Otherwise click a module, then another slot, to swap them (matches brought together fuse).
+ * Level-up workbench (Colossatron-style): game paused, 3 cards, reroll, and the gun's barrel.
+ * - DRAG a module card onto a barrel slot. An empty slot takes it; on a filled slot it is inserted
+ *   and the others slide over. Matches that end up side by side merge at once, step by step.
+ *   While dragging, the slot under the pointer shows what will happen.
+ * - Drag a module in the barrel to another slot to move it (or swap with what is there).
+ * - Clicking a module card (or pressing its number) also works: then click a slot or press the
+ *   slot's number. Other cards apply on click. A replace (full barrel half) asks for confirmation.
  */
 export class LevelUpScene extends Phaser.Scene {
   private ctl!: LevelUpController;
@@ -53,7 +78,10 @@ export class LevelUpScene extends Phaser.Scene {
   private root!: Phaser.GameObjects.Container;
   private placing: Extract<Card, { type: 'module' }> | null = null;
   private confirmReplace: number | null = null;
-  private swapFrom: number | null = null;
+  private drag: Drag | null = null;
+  private slots: SlotView[] = [];
+  private hoverSlot: number | null = null;
+  private animating = false;
   private tip: Phaser.GameObjects.Text | null = null;
 
   constructor() {
@@ -64,7 +92,10 @@ export class LevelUpScene extends Phaser.Scene {
     this.ctl = data.controller;
     this.placing = null;
     this.confirmReplace = null;
-    this.swapFrom = null;
+    this.drag = null;
+    this.slots = [];
+    this.hoverSlot = null;
+    this.animating = false;
   }
 
   create(): void {
@@ -76,35 +107,22 @@ export class LevelUpScene extends Phaser.Scene {
     this.root = this.add.container(0, 0);
     this.render();
 
-    this.input.keyboard?.on('keydown', (e: KeyboardEvent) => {
-      if (this.placing) {
-        // Number keys pick a slot (1 = leftmost); a replace needs the key twice.
-        const slot = Number(e.key) - 1;
-        if (e.key === 'Escape') this.cancelPlacing();
-        else if (slot >= 0 && slot < this.ctl.unlocked()) {
-          this.clickSlot(slot);
-          if (this.placing) this.hoverSlot(slot);
-        }
-        return;
-      }
-      if (e.key === 'Escape' && this.swapFrom !== null) {
-        this.swapFrom = null;
-        this.render();
-        return;
-      }
-      const n = Number(e.key);
-      const cards = this.ctl.cards();
-      if (n >= 1 && n <= cards.length) this.choose(cards[n - 1]!);
-      else if (e.key === 'r' || e.key === 'R') this.doReroll();
-    });
+    this.input.on(Phaser.Input.Events.POINTER_MOVE, (p: Phaser.Input.Pointer) => this.onPointerMove(p));
+    this.input.on(Phaser.Input.Events.POINTER_UP, (p: Phaser.Input.Pointer) => this.onPointerUp(p));
+    this.input.on(Phaser.Input.Events.POINTER_UP_OUTSIDE, (p: Phaser.Input.Pointer) => this.onPointerUp(p));
+    this.input.keyboard?.on('keydown', (e: KeyboardEvent) => this.onKey(e));
   }
 
-  private render(): void {
+  // ---------- drawing ----------
+
+  /** Redraw everything. `barrel` overrides the build's barrel (merge animation steps). */
+  private render(barrel?: readonly (ModSlot | null)[], flashAt: number | null = null): void {
     this.root.removeAll(true);
     const cx = GAME_WIDTH / 2;
-    const more = this.ctl.queuedAfter();
 
-    if (this.placing) {
+    if (this.animating) {
+      this.root.add(this.text(cx, 200, 'FUSING', 44, UiColors.accent, 'bold').setOrigin(0.5));
+    } else if (this.placing) {
       const t = describeCard(this.gd, this.placing);
       this.root.add(this.text(cx, 70, `Place ${t.name}`, 36, css(t.color), 'bold').setOrigin(0.5));
       this.root.add(
@@ -114,7 +132,7 @@ export class LevelUpScene extends Phaser.Scene {
         this.text(
           cx,
           290,
-          'Hover a slot to see what happens, then click it (or press its number).  Next to a match it fuses.',
+          'Click a slot (or press its number). On a filled slot it is inserted and the others slide over.',
           16,
           UiColors.textDim,
         ).setOrigin(0.5),
@@ -123,12 +141,13 @@ export class LevelUpScene extends Phaser.Scene {
         createButton(this, cx, 360, 'Back  [Esc]', () => this.cancelPlacing(), { width: 220, fontSize: 22 }),
       );
     } else {
+      const more = this.ctl.queuedAfter();
       this.root.add(this.text(cx, 60, this.ctl.title(), 36, UiColors.accent, 'bold').setOrigin(0.5));
       if (more > 0)
         this.root.add(this.text(cx, 98, `${more} more after this`, 16, UiColors.textDim).setOrigin(0.5));
       const cards = this.ctl.cards();
       cards.forEach((card, i) =>
-        this.drawCard(card, cx + (i - (cards.length - 1) / 2) * (CARD_W + 30), 270, i),
+        this.drawCard(card, cx + (i - (cards.length - 1) / 2) * (CARD_W + 30), CARD_Y, i),
       );
       const left = this.ctl.rerollsLeft();
       this.root.add(
@@ -139,7 +158,7 @@ export class LevelUpScene extends Phaser.Scene {
         }),
       );
     }
-    this.drawBarrel(585);
+    this.drawBarrel(barrel ?? this.ctl.build().barrel, flashAt);
   }
 
   private drawCard(card: Card, x: number, y: number, index: number): void {
@@ -148,8 +167,12 @@ export class LevelUpScene extends Phaser.Scene {
     box.setInteractive({ useHandCursor: true });
     box.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => box.setFillStyle(0x2c323d));
     box.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => box.setFillStyle(0x1f232b));
-    box.on(Phaser.Input.Events.GAMEOBJECT_POINTER_UP, () => this.choose(card));
+    box.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, (p: Phaser.Input.Pointer) => {
+      if (this.animating) return;
+      this.drag = { kind: 'card', card, x0: p.x, y0: p.y, moved: false, ghost: null };
+    });
     const top = y - CARD_H / 2;
+    const hint = card.type === 'module' ? 'drag onto the barrel' : 'click to take';
     this.root.add([
       box,
       this.text(x, top + 20, `[${index + 1}]  ${t.label}`, 13, css(t.color), 'bold').setOrigin(0.5),
@@ -158,20 +181,21 @@ export class LevelUpScene extends Phaser.Scene {
         .setOrigin(0.5, 0)
         .setWordWrapWidth(CARD_W - 36)
         .setAlign('center'),
+      this.text(x, y + CARD_H / 2 - 18, hint, 12, UiColors.textDim).setOrigin(0.5),
     ]);
   }
 
   /**
-   * The barrel: modules drawn in their colour with their tier, fittings with arrows, and each
-   * slot's strength from fittings / muzzle / crit chamber (×1.4 green, ×0.5 red). Tags show the
-   * gun's twist; a gap separates Double Barrel halves.
+   * The barrel: modules in their colour with their tier, fittings by name, each slot's strength
+   * from fittings / muzzle / crit chamber (×1.4 green, ×0.5 red), the gun's twist tags, and a gap
+   * between Double Barrel halves.
    */
-  private drawBarrel(y: number): void {
+  private drawBarrel(barrel: readonly (ModSlot | null)[], flashAt: number | null): void {
     const build = this.ctl.build();
     const pipeline = this.ctl.pipeline();
     const layout = pipeline.layout;
     const open = this.ctl.unlocked();
-    const n = build.barrel.length;
+    const n = barrel.length;
     const gap = 8;
     const chainGap = 34;
     const coreW = 120;
@@ -181,23 +205,21 @@ export class LevelUpScene extends Phaser.Scene {
     );
     const rowW = n * boxW + (n - 1) * gap + (layout.chains - 1) * chainGap;
     let x = (GAME_WIDTH - coreW - rowW) / 2;
+    const y = BARREL_Y;
+    this.slots = [];
 
-    const hint = this.placing
-      ? 'BARREL  ·  choose a slot'
-      : this.swapFrom !== null
-        ? 'BARREL  ·  click another slot to swap (Esc cancels)'
-        : 'BARREL  ·  click a module, then another slot, to swap';
-    this.root.add(this.text(x, y - 72, hint, 13, UiColors.textDim));
-
-    build.barrel.forEach((slot, i) => {
+    this.root.add(
+      this.text(x, y - 72, 'BARREL  ·  drag modules here, or between slots', 13, UiColors.textDim),
+    );
+    barrel.forEach((slot, i) => {
       const cx = x + boxW / 2;
       const locked = i >= open;
       const def = slot ? modDef(this.gd, slot.id) : null;
       const color = slot ? modColor(this.gd, slot.id) : 0x3a404b;
-      const selected = this.swapFrom === i || this.confirmReplace === i;
+      const selected = this.confirmReplace === i;
       const rect = this.add
         .rectangle(cx, y, boxW, SLOT_H, locked ? 0x15181d : slot ? color : 0x1f232b, slot ? 0.28 : 1)
-        .setStrokeStyle(selected ? 4 : 2, selected ? 0xf2b632 : locked ? 0x2a2f38 : color);
+        .setStrokeStyle(selected ? 4 : 2, selected ? 0xe0533d : locked ? 0x2a2f38 : color);
       const lines: string[] = [];
       if (locked) lines.push(`Lv ${this.ctl.unlockLevel(i)}`);
       else if (!slot || !def) lines.push('empty');
@@ -216,7 +238,7 @@ export class LevelUpScene extends Phaser.Scene {
         .setAlign('center');
       this.root.add([rect, label]);
 
-      const k = pipeline.strength[i] ?? 1;
+      const k = barrel === build.barrel ? (pipeline.strength[i] ?? 1) : 1;
       if (slot && def?.family !== 'fitting' && Math.abs(k - 1) > 1e-6) {
         this.root.add(
           this.text(
@@ -233,12 +255,23 @@ export class LevelUpScene extends Phaser.Scene {
       if (tag)
         this.root.add(this.text(cx, y - SLOT_H / 2 - 12, tag, 11, UiColors.accent, 'bold').setOrigin(0.5));
 
+      if (flashAt === i) this.flash(cx, y, boxW, label);
       if (!locked) {
         rect.setInteractive({ useHandCursor: true });
-        rect.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.hoverSlot(i));
-        rect.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => this.showTip('', UiColors.textDim));
-        rect.on(Phaser.Input.Events.GAMEOBJECT_POINTER_UP, () => this.clickSlot(i));
+        rect.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => {
+          if (!this.drag) this.showSlotInfo(i);
+        });
+        rect.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => {
+          if (!this.drag && this.confirmReplace === null) this.showTip('', UiColors.textDim);
+        });
+        rect.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, (p: Phaser.Input.Pointer) => {
+          if (this.animating) return;
+          if (slot && !this.placing)
+            this.drag = { kind: 'module', from: i, x0: p.x, y0: p.y, moved: false, ghost: null };
+          else this.clickSlot(i); // placement mode, or an empty slot
+        });
       }
+      this.slots.push({ i, x: cx, rect, open: !locked });
       x += boxW + gap;
       const endOfChain = (i + 1) % layout.slotsPerChain === 0 && i + 1 < layout.slots;
       if (endOfChain) x += chainGap - gap;
@@ -260,68 +293,188 @@ export class LevelUpScene extends Phaser.Scene {
           UiColors.textDim,
         ).setOrigin(0.5),
       );
-    this.tip = this.text(GAME_WIDTH / 2, y + SLOT_H / 2 + 24, '', 15, UiColors.textDim).setOrigin(0.5);
+    this.tip = this.text(GAME_WIDTH / 2, y + SLOT_H / 2 + 24, '', 16, UiColors.textDim, 'bold').setOrigin(
+      0.5,
+    );
     this.root.add(this.tip);
+  }
+
+  /** A merge: white flash over the slot and the label pops. */
+  private flash(x: number, y: number, w: number, label: Phaser.GameObjects.Text): void {
+    const glow = this.add.rectangle(x, y, w, SLOT_H, 0xffffff, 0.85);
+    this.root.add(glow);
+    this.tweens.add({ targets: glow, alpha: 0, duration: STEP_MS, ease: 'Quad.easeOut' });
+    label.setScale(1.5);
+    this.tweens.add({ targets: label, scale: 1, duration: STEP_MS, ease: 'Back.easeOut' });
   }
 
   private showTip(s: string, color: string): void {
     this.tip?.setText(s).setColor(color);
   }
 
-  /** Placement and swap previews; otherwise the module's description. */
-  private hoverSlot(i: number): void {
-    const slot = this.ctl.build().barrel[i] ?? null;
+  private showSlotInfo(i: number): void {
     if (this.placing) {
-      const events = this.ctl.previewPlace(i, this.placing.modId);
-      const replace = events.some((e) => e.kind === 'replace');
-      const fuse = events.some((e) => e.kind === 'fuse');
-      let text = describeEvents(this.gd, events);
-      if (replace) text += this.confirmReplace === i ? '   (click again to replace)' : '';
-      this.showTip(text, replace ? UiColors.danger : fuse ? UiColors.accent : UiColors.text);
+      this.showPreview(this.ctl.previewPlace(i, this.placing.modId), i);
       return;
     }
-    if (this.swapFrom !== null && this.swapFrom !== i) {
-      const events = this.ctl.previewSwap(this.swapFrom, i);
-      this.showTip(
-        events.length ? describeEvents(this.gd, events) : 'Swap',
-        events.length ? UiColors.accent : UiColors.text,
-      );
+    const slot = this.ctl.build().barrel[i] ?? null;
+    this.showTip(slot ? modDescription(this.gd, slot.id, slot.tier) : '', UiColors.textDim);
+  }
+
+  private showPreview(events: FusionEvent[], slot: number): void {
+    const replace = events.some((e) => e.kind === 'replace');
+    const fuse = events.some((e) => e.kind === 'fuse');
+    let text = describeEvents(this.gd, events);
+    if (replace) text += this.confirmReplace === slot ? '   (click again to replace)' : '   (replaces it)';
+    this.showTip(text, replace ? UiColors.danger : fuse ? UiColors.accent : UiColors.text);
+  }
+
+  // ---------- input ----------
+
+  private slotAt(x: number, y: number): number | null {
+    if (Math.abs(y - BARREL_Y) > SLOT_H / 2 + 10 || this.slots.length < 2) return null;
+    const half = Math.abs(this.slots[1]!.x - this.slots[0]!.x) / 2;
+    for (const s of this.slots) if (s.open && Math.abs(x - s.x) <= half) return s.i;
+    return null;
+  }
+
+  private dragModId(d: Drag): string | null {
+    if (d.kind === 'card') return d.card.type === 'module' ? d.card.modId : null;
+    return this.ctl.build().barrel[d.from]?.id ?? null;
+  }
+
+  private onPointerMove(p: Phaser.Input.Pointer): void {
+    const d = this.drag;
+    if (!d) return;
+    if (!d.moved) {
+      if (Math.hypot(p.x - d.x0, p.y - d.y0) < DRAG_START) return;
+      const modId = this.dragModId(d);
+      if (!modId) return; // only module cards and barrel modules can be dragged
+      d.moved = true;
+      d.ghost = this.makeGhost(modId);
+    }
+    d.ghost?.setPosition(p.x, p.y - 56); // above the pointer, so the slot under it stays readable
+    const over = this.slotAt(p.x, p.y);
+    if (over === this.hoverSlot) return;
+    if (this.hoverSlot !== null) this.highlight(this.hoverSlot, false);
+    this.hoverSlot = over;
+    if (over === null) {
+      this.showTip('', UiColors.textDim);
       return;
     }
-    if (slot) this.showTip(modDescription(this.gd, slot.id, slot.tier), UiColors.textDim);
+    this.highlight(over, true);
+    if (d.kind === 'card' && d.card.type === 'module')
+      this.showPreview(this.ctl.previewPlace(over, d.card.modId), over);
+    else if (d.kind === 'module') {
+      const merges = this.ctl.previewMove(d.from, over).filter((e) => e.kind !== 'move');
+      const text = merges.length ? describeEvents(this.gd, merges) : over === d.from ? '' : 'Move here';
+      this.showTip(text, merges.length ? UiColors.accent : UiColors.text);
+    }
+  }
+
+  private onPointerUp(p: Phaser.Input.Pointer): void {
+    const d = this.drag;
+    if (!d) return;
+    this.drag = null;
+    d.ghost?.destroy();
+    if (this.hoverSlot !== null) this.highlight(this.hoverSlot, false);
+    this.hoverSlot = null;
+    if (this.animating) return;
+
+    if (!d.moved) {
+      // A plain click.
+      if (d.kind === 'card') this.choose(d.card);
+      else this.showSlotInfo(d.from);
+      return;
+    }
+    const slot = this.slotAt(p.x, p.y);
+    if (slot === null) {
+      this.showTip('', UiColors.textDim);
+      return;
+    }
+    if (d.kind === 'card' && d.card.type === 'module') this.dropCard(d.card, slot);
+    else if (d.kind === 'module' && slot !== d.from)
+      this.play(this.ctl.move(d.from, slot), () => this.render());
+  }
+
+  private onKey(e: KeyboardEvent): void {
+    if (this.animating) return;
+    if (this.placing) {
+      // Number keys pick a slot (1 = leftmost); a replace needs the key twice.
+      const slot = Number(e.key) - 1;
+      if (e.key === 'Escape') this.cancelPlacing();
+      else if (slot >= 0 && slot < this.ctl.unlocked()) this.clickSlot(slot);
+      return;
+    }
+    const n = Number(e.key);
+    const cards = this.ctl.cards();
+    if (n >= 1 && n <= cards.length) this.choose(cards[n - 1]!);
+    else if (e.key === 'r' || e.key === 'R') this.doReroll();
+  }
+
+  private makeGhost(modId: string): Phaser.GameObjects.Container {
+    const def = modDef(this.gd, modId);
+    const g = this.add.container(0, 0, [
+      this.add.rectangle(0, 0, 118, 58, modColor(this.gd, modId), 0.85).setStrokeStyle(2, 0xffffff),
+      this.text(0, 0, def.name, 13, '#ffffff', 'bold').setOrigin(0.5),
+    ]);
+    return g.setDepth(10).setAlpha(0.9);
+  }
+
+  private highlight(i: number, on: boolean): void {
+    const s = this.slots.find((v) => v.i === i);
+    if (!s) return;
+    const slot = this.ctl.build().barrel[i];
+    s.rect.setStrokeStyle(on ? 4 : 2, on ? 0xf2b632 : slot ? modColor(this.gd, slot.id) : 0x3a404b);
+  }
+
+  // ---------- actions ----------
+
+  /** A module card dropped (or clicked into place) on a slot. A replace asks for a second go. */
+  private dropCard(card: Extract<Card, { type: 'module' }>, slot: number): void {
+    const preview = this.ctl.previewPlace(slot, card.modId);
+    if (preview.some((e) => e.kind === 'replace') && this.confirmReplace !== slot) {
+      this.placing = card; // continue in click mode: click (or press) the same slot again
+      this.confirmReplace = slot;
+      this.render();
+      this.showPreview(preview, slot);
+      return;
+    }
+    this.placing = null;
+    this.confirmReplace = null;
+    this.play(this.ctl.pick(card, slot), () => this.afterPick());
   }
 
   private clickSlot(i: number): void {
-    const slot = this.ctl.build().barrel[i] ?? null;
-    if (this.placing) {
-      const events = this.ctl.previewPlace(i, this.placing.modId);
-      if (events.some((e) => e.kind === 'replace') && this.confirmReplace !== i) {
-        this.confirmReplace = i; // a replace throws a module away: ask for a second click
-        this.render();
-        this.hoverSlot(i);
-        return;
-      }
-      const card = this.placing;
-      this.placing = null;
-      this.confirmReplace = null;
-      this.ctl.pick(card, i);
-      this.afterPick();
+    if (this.placing) this.dropCard(this.placing, i);
+    else this.showSlotInfo(i);
+  }
+
+  /** Show each step (the module landing, then one merge at a time with a flash), then `done`. */
+  private play(steps: FusionEvent[], done: () => void): void {
+    const merges = steps.filter((e) => e.kind === 'fuse');
+    if (merges.length === 0) {
+      done();
       return;
     }
-    if (this.swapFrom === null) {
-      if (slot) this.swapFrom = i;
-    } else {
-      if (this.swapFrom !== i) this.ctl.swap(this.swapFrom, i);
-      this.swapFrom = null;
-    }
-    this.render();
+    this.animating = true;
+    const landing = steps.find((e) => e.kind !== 'fuse');
+    this.render(landing ? landing.after : undefined, null);
+    merges.forEach((ev, n) => {
+      this.time.delayedCall(STEP_MS * (n + 1), () => {
+        if (ev.kind === 'fuse') this.render(ev.after, ev.at);
+      });
+    });
+    this.time.delayedCall(STEP_MS * (merges.length + 1) + 120, () => {
+      this.animating = false;
+      done();
+    });
   }
 
   private choose(card: Card): void {
     if (card.type === 'module') {
       this.placing = card;
       this.confirmReplace = null;
-      this.swapFrom = null;
       this.render();
       return;
     }
@@ -342,10 +495,8 @@ export class LevelUpScene extends Phaser.Scene {
   }
 
   private afterPick(): void {
-    if (this.ctl.hasMore()) {
-      this.swapFrom = null;
-      this.render();
-    } else {
+    if (this.ctl.hasMore()) this.render();
+    else {
       this.ctl.close();
       this.scene.stop();
     }

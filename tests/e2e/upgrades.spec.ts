@@ -4,7 +4,7 @@
  */
 import { expect, test, type Page } from '@playwright/test';
 import type { RunBuild } from '../../src/systems/build';
-import { clickGame, gamePoint, runState, startRun, trackErrors } from './helpers';
+import { gamePoint, runState, startRun, trackErrors } from './helpers';
 
 const levelUpOpen = (page: Page) =>
   page.waitForFunction(() => window.__svan!.activeScenes().includes('levelUp'), null, { timeout: 3_000 });
@@ -23,6 +23,16 @@ async function pickFirst(page: Page): Promise<void> {
     await page.waitForTimeout(80);
   }
   expect(await picked(page)).toBe(before + 1);
+}
+
+/** Drag with the mouse between two game points, in small steps like a hand would. */
+async function dragGame(page: Page, from: [number, number], to: [number, number]): Promise<void> {
+  const a = await gamePoint(page, from[0], from[1]);
+  const b = await gamePoint(page, to[0], to[1]);
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move(b.x, b.y, { steps: 12 });
+  await page.mouse.up();
 }
 
 /** Centre of barrel slot `i` on the level-up screen (8 slots, one chain: Long Gun). */
@@ -98,7 +108,58 @@ test('placing a module next to the same one fuses them, with a preview first', a
   expect(errors).toEqual([]);
 });
 
-test('clicking a module, then another slot, swaps them', async ({ page }) => {
+test('dragging a module card onto a filled slot inserts it; the others slide over', async ({ page }) => {
+  const errors = trackErrors(page);
+  await startRun(page, 'long_gun');
+  await page.evaluate(() => {
+    const run = window.__svan!.run!;
+    const b = run.build();
+    b.barrel[0] = { id: 'ember_shot', tier: 1 };
+    b.barrel[1] = { id: 'twin_shot', tier: 1 };
+    run.setBuild(b);
+    run.queueHand([{ type: 'module', modId: 'ricochet', family: 'grey', fuses: false }]);
+    run.grantScrap(5);
+  });
+  await levelUpOpen(page);
+  // The single card sits in the middle; drop it on slot 2 (Twin Shot).
+  const card = await gamePoint(page, 640, 270);
+  const slot = await gamePoint(page, slotX(1), SLOT_Y);
+  await page.mouse.move(card.x, card.y);
+  await page.mouse.down();
+  await page.mouse.move(slot.x, slot.y, { steps: 12 });
+  await page.screenshot({ path: test.info().outputPath('drag-preview.png') });
+  await page.mouse.up();
+  await levelUpClosed(page);
+  const build: RunBuild = await page.evaluate(() => window.__svan!.run!.build());
+  expect(build.barrel.slice(0, 4)).toEqual([
+    { id: 'ember_shot', tier: 1 },
+    { id: 'ricochet', tier: 1 },
+    { id: 'twin_shot', tier: 1 },
+    null,
+  ]);
+  expect(errors).toEqual([]);
+});
+
+test('dragging a card next to the same module merges them, with an animation', async ({ page }) => {
+  await startRun(page, 'long_gun');
+  await page.evaluate(() => {
+    const run = window.__svan!.run!;
+    const b = run.build();
+    b.barrel[0] = { id: 'ember_shot', tier: 1 };
+    run.setBuild(b);
+    run.queueHand([{ type: 'module', modId: 'ember_shot', family: 'element', fuses: true }]);
+    run.grantScrap(5);
+  });
+  await levelUpOpen(page);
+  await dragGame(page, [640, 270], [slotX(1), SLOT_Y]);
+  await page.waitForTimeout(120);
+  await page.screenshot({ path: test.info().outputPath('merge-animation.png') });
+  await levelUpClosed(page);
+  const build: RunBuild = await page.evaluate(() => window.__svan!.run!.build());
+  expect(build.barrel.slice(0, 2)).toEqual([null, { id: 'ember_shot', tier: 2 }]);
+});
+
+test('dragging a module onto another slot swaps them', async ({ page }) => {
   await startRun(page, 'long_gun');
   await page.evaluate(() => {
     const run = window.__svan!.run!;
@@ -109,8 +170,7 @@ test('clicking a module, then another slot, swaps them', async ({ page }) => {
     run.grantScrap(5);
   });
   await levelUpOpen(page);
-  await clickGame(page, slotX(0), SLOT_Y);
-  await clickGame(page, slotX(1), SLOT_Y);
+  await dragGame(page, [slotX(0), SLOT_Y], [slotX(1), SLOT_Y]);
   const build: RunBuild = await page.evaluate(() => window.__svan!.run!.build());
   expect(build.barrel.slice(0, 2).map((s) => s?.id)).toEqual(['ricochet', 'split_shot']);
 });

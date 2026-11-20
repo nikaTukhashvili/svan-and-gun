@@ -8,7 +8,7 @@ import {
   modDef,
   place,
   previewPlace,
-  swapAndFuse,
+  moveModule,
   tierParams,
 } from '../../src/systems/fusion';
 import { layoutOf } from '../../src/systems/modPipeline';
@@ -84,7 +84,8 @@ describe('place: put, fuse, cascade, replace', () => {
   it('into an empty slot with no match it is just placed', () => {
     const b = barrel(['ember_shot']);
     const ev = place(data, b, plain(b), 2, m('twin_shot'));
-    expect(ev).toEqual([{ kind: 'place', at: 2, mod: m('twin_shot') }]);
+    expect(ev).toHaveLength(1);
+    expect(ev[0]).toMatchObject({ kind: 'place', at: 2, mod: m('twin_shot') });
     expect(show(b).slice(0, 3)).toEqual(['ember_shot:1', null, 'twin_shot:1']);
   });
 
@@ -94,8 +95,36 @@ describe('place: put, fuse, cascade, replace', () => {
     expect(show(b).slice(0, 2)).toEqual([null, 'ember_shot:3']);
   });
 
-  it('dropped onto a compatible module it fuses in place (no spare slot needed)', () => {
-    const b = barrel([
+  it('on a filled slot it is inserted and the others slide over: the same module dropped elsewhere stays separate', () => {
+    const b = barrel(['ember_shot', 'twin_shot']);
+    place(data, b, plain(b), 1, m('ricochet')); // onto Twin: Twin slides right
+    expect(show(b).slice(0, 4)).toEqual(['ember_shot:1', 'ricochet:1', 'twin_shot:1', null]);
+    place(data, b, plain(b), 3, m('ember_shot')); // not next to the other Fire: two separate Fires
+    expect(show(b).slice(0, 4)).toEqual(['ember_shot:1', 'ricochet:1', 'twin_shot:1', 'ember_shot:1']);
+  });
+
+  it('inserting next to a match merges them (it never upgrades by being dropped on)', () => {
+    const b = barrel(['ember_shot', 'twin_shot']);
+    const ev = place(data, b, plain(b), 1, m('ember_shot')); // Fire inserted at 1, next to Fire
+    expect(ev.map((e) => e.kind)).toEqual(['insert', 'fuse']);
+    expect(ev[0]!.after.slice(0, 3)).toEqual([m('ember_shot'), m('ember_shot'), m('twin_shot')]); // the landing
+    expect(show(b).slice(0, 3)).toEqual([null, 'ember_shot:2', 'twin_shot:1']);
+  });
+
+  it('a slide that brings two matches together merges them too', () => {
+    const b = barrel(['split_shot', 'twin_shot', null, 'twin_shot']);
+    place(data, b, plain(b), 0, m('heavy_slug')); // the first two slide right into the gap
+    expect(show(b).slice(0, 4)).toEqual(['heavy_slug:1', 'split_shot:1', 'twin_shot:2', null]);
+  });
+
+  it('slides towards the nearest gap on the right first, else the left; never into locked slots', () => {
+    const b = barrel([null, 'ember_shot', 'twin_shot', 'ricochet']);
+    place(data, b, plain(b), 2, m('heavy_slug'), 4); // no gap to the right within 4 open slots
+    expect(show(b).slice(0, 5)).toEqual(['ember_shot:1', 'twin_shot:1', 'heavy_slug:1', 'ricochet:1', null]);
+  });
+
+  it('a full barrel half feeds a matching module in place, and replaces anything else', () => {
+    const ids = [
       'ember_shot:4',
       'twin_shot',
       'heavy_slug',
@@ -104,9 +133,12 @@ describe('place: put, fuse, cascade, replace', () => {
       'long_rifling',
       'piercing_bore',
       'brace',
-    ]);
+    ];
+    const b = barrel(ids);
     place(data, b, plain(b), 0, m('ember_shot'));
     expect(b.barrel[0]).toEqual(m('ember_shot', 5));
+    const ev = place(data, b, plain(b), 1, m('ricochet'));
+    expect(ev[0]).toMatchObject({ kind: 'replace', at: 1, old: m('twin_shot'), by: m('ricochet') });
   });
 
   it('cascades: Fire next to Fire next to Thunder becomes Plasma', () => {
@@ -127,13 +159,6 @@ describe('place: put, fuse, cascade, replace', () => {
     place(data, c, plain(c), 1, m('ember_shot'));
     // No same-module neighbour: left (Venom) first → Brimstone 2; it cannot take Thunder.
     expect(show(c).slice(0, 3)).toEqual([null, 'brimstone:2', 'thunder_spark:1']);
-  });
-
-  it('dropped onto an incompatible module it replaces it', () => {
-    const b = barrel(['twin_shot:3']);
-    const ev = place(data, b, plain(b), 0, m('ricochet'));
-    expect(ev[0]).toEqual({ kind: 'replace', at: 0, old: m('twin_shot', 3), by: m('ricochet') });
-    expect(b.barrel[0]).toEqual(m('ricochet'));
   });
 
   it('fittings are placed and never fuse', () => {
@@ -161,10 +186,16 @@ describe('place: put, fuse, cascade, replace', () => {
   });
 });
 
-describe('swapAndFuse and helpers', () => {
-  it('swapping two matches together fuses them', () => {
+describe('moveModule and helpers', () => {
+  it('dragging a module into an empty slot moves it', () => {
+    const b = barrel(['twin_shot']);
+    moveModule(data, b, plain(b), 0, 3);
+    expect(show(b).slice(0, 4)).toEqual([null, null, null, 'twin_shot:1']);
+  });
+
+  it('dragging onto a module swaps them, and matches brought together merge', () => {
     const b = barrel(['ember_shot', 'twin_shot', 'ember_shot:2']);
-    swapAndFuse(data, b, plain(b), 1, 2); // Fire 2 moves next to Fire 1 and absorbs it
+    moveModule(data, b, plain(b), 2, 1); // Fire 2 swaps with Twin, lands next to Fire 1
     expect(show(b).slice(0, 3)).toEqual([null, 'ember_shot:3', 'twin_shot:1']);
   });
 

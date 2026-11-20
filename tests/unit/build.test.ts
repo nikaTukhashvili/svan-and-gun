@@ -58,7 +58,7 @@ describe('card draw never offers an invalid card (property test over many seeds)
         // Pick one at random and put modules in a random open slot, like a player would.
         const card = rng.pick(hand);
         const open = unlockedSlots(data, level, t.build.barrel.length);
-        applyCard(data, gun, t, card, card.type === 'module' ? rng.int(0, open - 1) : undefined);
+        applyCard(data, gun, t, card, card.type === 'module' ? rng.int(0, open - 1) : undefined, open);
 
         for (const s of t.build.barrel) if (s) expect(s.tier).toBeGreaterThanOrEqual(1);
         // Nothing sits in a slot that is not unlocked yet.

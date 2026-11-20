@@ -136,6 +136,8 @@ export function describeEvents(data: GameData, events: readonly FusionEvent[]): 
   const parts: string[] = [];
   for (const ev of events) {
     if (ev.kind === 'place') parts.push(`Place ${slotLabel(data, ev.mod)}`);
+    else if (ev.kind === 'insert') parts.push(`Insert ${slotLabel(data, ev.mod)} (modules slide over)`);
+    else if (ev.kind === 'move') parts.push('Move');
     else if (ev.kind === 'replace')
       parts.push(`Replace ${slotLabel(data, ev.old)} with ${slotLabel(data, ev.by)}`);
     else

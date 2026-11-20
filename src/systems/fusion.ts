@@ -5,20 +5,27 @@
  * - Fusing ADDS tiers: same module + same module → that module; element + a different element →
  *   their hybrid; hybrid + one of its parent elements (or the same hybrid) → the hybrid.
  *   Grey modules only fuse with themselves. Fittings never fuse.
- * - Placing into a slot: onto a compatible module, or into an empty slot next to one, fuses into
- *   that slot. The result keeps fusing with compatible neighbours (a cascade): same module
- *   first, then left before right. Onto an incompatible module = replace it.
+ * - Placing (dragging a card onto a slot): an empty slot takes it; on a filled slot it is inserted
+ *   and the modules on one side slide towards the nearest empty slot. Matches that end up side by
+ *   side merge at once, and keep merging (a cascade): same module first, then left before right.
+ *   A full barrel half: a matching module is fed in place, anything else is replaced.
  * - Neighbours are slots in the same chain: on a Double Barrel nothing fuses across the gap.
  */
 import type { GameData, TieredModDef } from '../data/types';
 import type { ModSlot, RunBuild } from './build';
 import { chainOfSlot, type BarrelLayout } from './modPipeline';
 
+/** What a placement or move did, step by step; `after` is the barrel after that step (animation). */
 export type FusionEvent =
-  /** `a` (at `at`) and `b` (from `from`, which is now empty) became `result` at `at`. */
-  | { kind: 'fuse'; at: number; from: number; a: ModSlot; b: ModSlot; result: ModSlot }
-  | { kind: 'replace'; at: number; old: ModSlot; by: ModSlot }
-  | { kind: 'place'; at: number; mod: ModSlot };
+  /** `a` (at `at`) and `b` (from `from`, now empty) became `result` at `at`. */
+  | { kind: 'fuse'; at: number; from: number; a: ModSlot; b: ModSlot; result: ModSlot; after: Barrel }
+  | { kind: 'replace'; at: number; old: ModSlot; by: ModSlot; after: Barrel }
+  | { kind: 'place'; at: number; mod: ModSlot; after: Barrel }
+  /** Put in at `at`; the modules between `at` and `gap` slid one slot towards `gap`. */
+  | { kind: 'insert'; at: number; mod: ModSlot; gap: number; after: Barrel }
+  | { kind: 'move'; from: number; to: number; after: Barrel };
+
+type Barrel = (ModSlot | null)[];
 
 /** Params that are counts: rounded after scaling (and never below their tier-1 value). */
 const COUNT_PARAMS = new Set([
@@ -78,6 +85,14 @@ export function neighbours(layout: BarrelLayout, i: number): [number | null, num
   return [left, right];
 }
 
+/** Slots `i` shares a chain with, limited to the `open` (unlocked) slots: [start, end). */
+function chainRange(layout: BarrelLayout, i: number, open: number): [number, number] {
+  const start = chainOfSlot(layout, i) * layout.slotsPerChain;
+  return [start, Math.min(start + layout.slotsPerChain, layout.slots, open)];
+}
+
+const snapshot = (build: RunBuild) => build.barrel.map((s) => (s ? { ...s } : null));
+
 /** Fuse the module at `i` with compatible neighbours until none is left (the cascade). */
 function settle(
   data: GameData,
@@ -103,53 +118,107 @@ function settle(
     const other = build.barrel[best.idx]!;
     build.barrel[i] = best.result;
     build.barrel[best.idx] = null;
-    events.push({ kind: 'fuse', at: i, from: best.idx, a: cur, b: other, result: best.result });
+    events.push({
+      kind: 'fuse',
+      at: i,
+      from: best.idx,
+      a: cur,
+      b: other,
+      result: best.result,
+      after: snapshot(build),
+    });
   }
 }
 
-/** Place a module in slot `i` (fuse, replace or put), then cascade. Mutates `build`. */
+/**
+ * Merge every pair of matching neighbours: the slot that changed first (`first`), then any other
+ * pair left to right (a shift can bring two modules together), each with its own cascade.
+ */
+function settleAll(
+  data: GameData,
+  build: RunBuild,
+  layout: BarrelLayout,
+  first: number[],
+  events: FusionEvent[],
+): void {
+  for (const i of first) settle(data, build, layout, i, events);
+  for (;;) {
+    let found = -1;
+    for (let k = 0; k + 1 < build.barrel.length && found === -1; k++) {
+      const a = build.barrel[k];
+      const b = build.barrel[k + 1];
+      if (a && b && neighbours(layout, k)[1] === k + 1 && fuseResult(data, a, b)) found = k;
+    }
+    if (found === -1) return;
+    settle(data, build, layout, found, events);
+  }
+}
+
+/**
+ * Drop a module on slot `i` (only the first `open` slots are usable):
+ * - an empty slot: it is put there;
+ * - a filled slot: it is INSERTED there, and the modules on one side slide one slot towards the
+ *   nearest empty slot of the same chain (right first). It never upgrades by itself;
+ * - a full chain: it feeds a matching module in place, or else replaces the one there.
+ * Then every match that ends up side by side merges (with cascades). Mutates `build`.
+ */
 export function place(
   data: GameData,
   build: RunBuild,
   layout: BarrelLayout,
   i: number,
   mod: ModSlot,
+  open = build.barrel.length,
 ): FusionEvent[] {
   if (i < 0 || i >= build.barrel.length) throw new Error(`No barrel slot ${i}`);
   const events: FusionEvent[] = [];
-  const target = build.barrel[i];
   const placed = { id: mod.id, tier: mod.tier };
-  if (target) {
-    const result = fuseResult(data, target, placed);
-    if (result) {
-      build.barrel[i] = result;
-      events.push({ kind: 'fuse', at: i, from: i, a: target, b: placed, result });
-    } else {
-      build.barrel[i] = placed;
-      events.push({ kind: 'replace', at: i, old: target, by: placed });
-    }
-  } else {
+  const target = build.barrel[i];
+  if (!target) {
     build.barrel[i] = placed;
-    events.push({ kind: 'place', at: i, mod: placed });
+    events.push({ kind: 'place', at: i, mod: placed, after: snapshot(build) });
+  } else {
+    const [start, end] = chainRange(layout, i, open);
+    let gap = -1;
+    for (let j = i + 1; j < end && gap === -1; j++) if (!build.barrel[j]) gap = j;
+    for (let j = i - 1; j >= start && gap === -1; j--) if (!build.barrel[j]) gap = j;
+    if (gap !== -1) {
+      const step = gap > i ? -1 : 1; // pull each module one slot towards the gap
+      for (let j = gap; j !== i; j += step) build.barrel[j] = build.barrel[j + step] ?? null;
+      build.barrel[i] = placed;
+      events.push({ kind: 'insert', at: i, mod: placed, gap, after: snapshot(build) });
+    } else {
+      const fed = fuseResult(data, target, placed);
+      build.barrel[i] = fed ?? placed;
+      events.push(
+        fed
+          ? { kind: 'fuse', at: i, from: i, a: target, b: placed, result: fed, after: snapshot(build) }
+          : { kind: 'replace', at: i, old: target, by: placed, after: snapshot(build) },
+      );
+    }
   }
-  settle(data, build, layout, i, events);
+  settleAll(data, build, layout, [i], events);
   return events;
 }
 
-/** Swap two slots, then let both settle (a swap can bring matches together). */
-export function swapAndFuse(
+/**
+ * Drag a module from slot `from` to slot `to`: into an empty slot it moves, onto a module the two
+ * swap. Then matches that end up side by side merge.
+ */
+export function moveModule(
   data: GameData,
   build: RunBuild,
   layout: BarrelLayout,
-  a: number,
-  b: number,
+  from: number,
+  to: number,
 ): FusionEvent[] {
-  const tmp = build.barrel[a] ?? null;
-  build.barrel[a] = build.barrel[b] ?? null;
-  build.barrel[b] = tmp;
   const events: FusionEvent[] = [];
-  settle(data, build, layout, a, events);
-  settle(data, build, layout, b, events);
+  if (from === to || !build.barrel[from]) return events;
+  const tmp = build.barrel[to] ?? null;
+  build.barrel[to] = build.barrel[from] ?? null;
+  build.barrel[from] = tmp;
+  events.push({ kind: 'move', from, to, after: snapshot(build) });
+  settleAll(data, build, layout, [to, from], events);
   return events;
 }
 
@@ -165,20 +234,21 @@ export function previewPlace(
   layout: BarrelLayout,
   i: number,
   mod: ModSlot,
+  open = build.barrel.length,
 ): { events: FusionEvent[]; build: RunBuild } {
   const copy = copyBuild(build);
-  return { events: place(data, copy, layout, i, mod), build: copy };
+  return { events: place(data, copy, layout, i, mod, open), build: copy };
 }
 
-export function previewSwap(
+export function previewMove(
   data: GameData,
   build: RunBuild,
   layout: BarrelLayout,
-  a: number,
-  b: number,
+  from: number,
+  to: number,
 ): { events: FusionEvent[]; build: RunBuild } {
   const copy = copyBuild(build);
-  return { events: swapAndFuse(data, copy, layout, a, b), build: copy };
+  return { events: moveModule(data, copy, layout, from, to), build: copy };
 }
 
 /** True if a fresh tier-1 copy of `modId` would fuse with any module already in the barrel. */

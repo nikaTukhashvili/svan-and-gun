@@ -176,13 +176,14 @@ The barrel is a row of slots. Each slot holds one **module**. Where a module sit
 - Numbers grow with tier by a formula per module: value = base + perTier × (tier − 1) (`barrelMods.json` > base, perTier). Counts (chains, bounces, shards, bullets, stacks) are rounded.
 - Why no cap and why tiers add: with "two equal tiers make the next tier, max III" a Tier III module needed 4 copies and spare slots to build the half-made parts, so in a full barrel the last slots could never max out. Feeding a copy straight onto a module needs no spare slot.
 
-**Placing and swapping**
+**Placing and moving** (Colossatron-style drag and drop, revised 2026-11-20 after playtest)
 
-- The player chooses the slot for a new module. Dropped onto a compatible module, or into an empty slot next to one, it fuses into that slot and the neighbour's slot empties.
-- The result keeps fusing while a compatible neighbour is next to it (a **cascade**): same module first, then left before right. Example: `[Fire 1][ ][Thunder 1]` + Fire into the middle → Fire 2 → Plasma 3.
-- Dropped onto an incompatible module, it **replaces** it (the screen asks for a second click).
-- Swapping two slots on the level-up screen is free, and a swap that brings matches together fuses them.
-- The level-up screen previews exactly what a placement or swap will do before it happens.
+- The player **drags** a module card onto a barrel slot (clicking the card, then a slot or its number key, also works).
+- An empty slot takes it. On a filled slot the module is **inserted**: the modules on one side slide one slot towards the nearest empty slot in the same half (right first, never into a locked slot). A drop never upgrades a module by itself, so the same module dropped elsewhere stays a separate copy.
+- Matches that end up **side by side merge at once**, shown step by step with a flash. Merges keep going while a match is next to the result (a **cascade**): same module first, then left before right. Example: `[Fire 1][ ][Thunder 1]` + Fire into the middle → Fire 2 → Plasma 3. A slide that brings two matches together merges them too.
+- When a barrel half is full, a drop feeds a matching module in place, or else **replaces** the module there (asks for a second click).
+- Dragging a module inside the barrel moves it (or swaps it with the module there); matches brought together merge.
+- While dragging, the slot under the pointer shows exactly what will happen.
 
 **Fittings** multiply the strength of their neighbours in the same half of the barrel. A fitting next to an empty slot or another fitting does nothing.
 

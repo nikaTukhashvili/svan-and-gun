@@ -22,7 +22,7 @@ import {
 import { BulletSystem, REDIRECTED, type Bullet } from '../systems/bullets';
 import { Destructibles, type Destructible } from '../systems/destructibles';
 import { applyOnFire, buildPipeline, HitResolver, layoutOf, type Pipeline } from '../systems/modPipeline';
-import { previewPlace, previewSwap } from '../systems/fusion';
+import { previewMove, previewPlace } from '../systems/fusion';
 import { PickupSystem, rollCrateDrop, rollEnemyDrops, type Drop, type Pickup } from '../systems/pickups';
 import { Progression } from '../systems/progression';
 import { StatusEffectSystem } from '../systems/status';
@@ -599,8 +599,8 @@ export class GameScene extends Phaser.Scene {
         return levels[i] ?? levels[levels.length - 1] ?? 1;
       },
       previewPlace: (slot, modId) =>
-        previewPlace(d, this.run.build, this.layout(), slot, { id: modId, tier: 1 }).events,
-      previewSwap: (a, b) => previewSwap(d, this.run.build, this.layout(), a, b).events,
+        previewPlace(d, this.run.build, this.layout(), slot, { id: modId, tier: 1 }, this.openSlots()).events,
+      previewMove: (a, b) => previewMove(d, this.run.build, this.layout(), a, b).events,
       cards: () => this.hand,
       rerollsLeft: () => Math.max(0, Math.round(this.stats.rerolls) - this.run.rerollsUsed),
       reroll: () => {
@@ -608,7 +608,7 @@ export class GameScene extends Phaser.Scene {
         this.hand = this.drawHand();
       },
       pick: (card, slot) => {
-        const events = applyCard(d, this.gun, this.run, card, slot);
+        const events = applyCard(d, this.gun, this.run, card, slot, this.openSlots());
         this.cardsPicked++;
         if (card.type === 'runStat') {
           this.run.picks.push({
@@ -635,10 +635,12 @@ export class GameScene extends Phaser.Scene {
         else this.chestsPending--;
         this.refreshStats();
         if (queued() > 0) this.hand = this.drawHand();
+        return events;
       },
-      swap: (a, b) => {
-        swapSlots(d, this.gun, this.run.build, a, b);
+      move: (a, b) => {
+        const events = swapSlots(d, this.gun, this.run.build, a, b);
         this.refreshStats();
+        return events;
       },
       hasMore: () => queued() > 0,
       close: () => {
@@ -1051,6 +1053,10 @@ export class GameScene extends Phaser.Scene {
       value,
     });
     this.run.picks.push({ kind: 'perk', cardId, rarity, stat: def.stat, mode: def.mode, value });
+  }
+
+  private openSlots(): number {
+    return unlockedSlots(this.gd, this.progression.level, this.run.build.barrel.length);
   }
 
   private layout() {

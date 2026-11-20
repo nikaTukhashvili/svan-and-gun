@@ -10,7 +10,7 @@
  */
 import type { RNG } from '../core/rng';
 import type { GameData, GunDef, ModFamily, Rarity, StatId, StatMode } from '../data/types';
-import { fusesWithOwned, modDef, place, swapAndFuse, type FusionEvent } from './fusion';
+import { fusesWithOwned, modDef, moveModule, place, type FusionEvent } from './fusion';
 import { layoutOf } from './modPipeline';
 import { addBonus, type StatBonuses } from './stats';
 
@@ -170,8 +170,9 @@ export function drawCards(
 }
 
 /**
- * Apply a picked card. A module card needs `slot` (an open barrel slot). Returns what happened
- * in the barrel (place / fuse / replace events); empty for other cards.
+ * Apply a picked card. A module card needs `slot` (an open barrel slot; `open` = how many slots
+ * are unlocked, so an insert never shifts into a locked one). Returns what happened in the barrel
+ * step by step; empty for other cards.
  */
 export function applyCard(
   data: GameData,
@@ -179,12 +180,13 @@ export function applyCard(
   target: BuildTarget,
   card: Card,
   slot?: number,
+  open?: number,
 ): FusionEvent[] {
   const { build } = target;
   switch (card.type) {
     case 'module':
       if (slot === undefined) throw new Error('A module card needs a slot');
-      return place(data, build, layoutOf(gun, build.barrel.length), slot, { id: card.modId, tier: 1 });
+      return place(data, build, layoutOf(gun, build.barrel.length), slot, { id: card.modId, tier: 1 }, open);
     case 'coreTier':
       build.coreTier = card.toTier;
       return [];
@@ -215,7 +217,7 @@ export function setSlot(build: RunBuild, index: number, slot: ModSlot | null): v
   build.barrel[index] = slot ? { id: slot.id, tier: slot.tier } : null;
 }
 
-/** Swap two barrel slots (free, on the level-up screen); matches brought together fuse. */
+/** Drag a module to another slot (free, on the level-up screen): move or swap; matches brought together fuse. */
 export function swapSlots(
   data: GameData,
   gun: GunDef | null,
@@ -223,7 +225,7 @@ export function swapSlots(
   a: number,
   b: number,
 ): FusionEvent[] {
-  return swapAndFuse(data, build, layoutOf(gun, build.barrel.length), a, b);
+  return moveModule(data, build, layoutOf(gun, build.barrel.length), a, b);
 }
 
 /** Is this card a valid offer for this build? For tests. */
