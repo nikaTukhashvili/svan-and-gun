@@ -59,6 +59,9 @@ describe('DpsMeter', () => {
     m.reset(1);
     expect(m.stats(1, 0).total).toBe(0);
     expect(m.stats('all', 0).total).toBe(40);
+    m.record('pack', 5, 0, false, false);
+    m.record('pack', 5, 0, false, false);
+    expect(m.stats('pack', 0).total).toBe(10);
     m.reset();
     expect(m.stats('all', 0).total).toBe(0);
     expect(m.stats(99, 0).dps).toBe(0);

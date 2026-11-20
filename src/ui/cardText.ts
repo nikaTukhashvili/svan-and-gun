@@ -4,6 +4,7 @@
  */
 import type { GameData, GunDef } from '../data/types';
 import type { Card, ModSlot, SlotKind } from '../systems/build';
+import type { BarrelLayout } from '../systems/modPipeline';
 
 export interface CardText {
   label: string;
@@ -111,6 +112,16 @@ export const STAT_LABELS: Record<string, string> = {
 export function slotLabel(data: GameData, kind: SlotKind, slot: ModSlot | null): string {
   if (!slot) return 'empty';
   return `${modName(data, kind, slot.id)} ${roman(slot.level)}`;
+}
+
+/** Tag over a barrel slot: LEFT/RIGHT BARREL, MUZZLE ×n, CRIT CHAMBER ×n, or null. */
+export function barrelSlotTag(layout: BarrelLayout, i: number): string | null {
+  const last = i === layout.slots - 1;
+  let tag: string | null = null;
+  if (layout.chains > 1 && i % layout.slotsPerChain === 0) tag = i === 0 ? 'LEFT BARREL' : 'RIGHT BARREL';
+  if (last && layout.muzzleBoost > 1) tag = `MUZZLE ×${layout.muzzleBoost}`;
+  if (last && layout.critChamberMult > 0) tag = `CRIT CHAMBER ×${layout.critChamberMult}`;
+  return tag;
 }
 
 /** One line describing a gun's barrel twist (gun select, build sheet). */

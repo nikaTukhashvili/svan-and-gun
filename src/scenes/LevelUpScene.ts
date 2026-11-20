@@ -3,7 +3,7 @@ import { GAME_HEIGHT, GAME_WIDTH, SceneKeys, UiColors } from '../config';
 import type { GameData, GunDef } from '../data/types';
 import type { Card, RunBuild, SlotKind } from '../systems/build';
 import { isOperator, type Pipeline } from '../systems/modPipeline';
-import { describeCard, modDescription, roman, slotLabel } from '../ui/cardText';
+import { barrelSlotTag, describeCard, modDescription, roman, slotLabel } from '../ui/cardText';
 import { createButton } from '../ui/button';
 import { getGameData } from './gameData';
 
@@ -200,12 +200,7 @@ export class LevelUpScene extends Phaser.Scene {
     };
 
     build.barrel.forEach((_, i) => {
-      const last = i === layout.slots - 1;
-      let tag: string | null = null;
-      if (layout.chains > 1 && i % layout.slotsPerChain === 0) tag = i === 0 ? 'LEFT BARREL' : 'RIGHT BARREL';
-      if (last && layout.muzzleBoost > 1) tag = `MUZZLE ×${layout.muzzleBoost}`;
-      if (last && layout.critChamberMult > 0) tag = `CRIT CHAMBER ×${layout.critChamberMult}`;
-      box('barrel', i, tag);
+      box('barrel', i, barrelSlotTag(layout, i));
       const endOfChain = (i + 1) % layout.slotsPerChain === 0 && i + 1 < layout.slots;
       if (endOfChain) x += groupGap - gap;
     });

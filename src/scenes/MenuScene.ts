@@ -1,7 +1,9 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH, SceneKeys, UiColors } from '../config';
+import { devToolsEnabled } from '../debug/devFlags';
 import { markReady } from '../debug/testHook';
 import { createButton } from '../ui/button';
+import type { GameSceneData } from './GameScene';
 import { getGameData } from './gameData';
 import { getSave, saveNoticeText } from './meta';
 
@@ -46,10 +48,21 @@ export class MenuScene extends Phaser.Scene {
     createButton(this, cx, 480, 'High Scores', () => this.scene.start(SceneKeys.HighScores));
     createButton(this, cx, 550, 'Settings', () => this.scene.start(SceneKeys.Settings, { overlay: false }));
 
+    if (devToolsEnabled) {
+      // Dev tool: always in `npm run dev`; on the hosted build only with ?dev.
+      createButton(this, cx, 620, 'Training Ground', () => this.startTrainingGround(data.guns[0]!.id), {
+        fontSize: 22,
+      });
+    }
+
     const notice = saveNoticeText(save);
     if (notice) {
       this.add
-        .text(cx, 630, notice, { fontFamily: font, fontSize: '16px', color: UiColors.danger })
+        .text(cx, devToolsEnabled ? 675 : 630, notice, {
+          fontFamily: font,
+          fontSize: '16px',
+          color: UiColors.danger,
+        })
         .setOrigin(0.5);
     }
     this.add
@@ -67,5 +80,10 @@ export class MenuScene extends Phaser.Scene {
 
     this.input.keyboard?.once('keydown-ENTER', () => this.scene.start(SceneKeys.GunSelect));
     markReady();
+  }
+
+  private startTrainingGround(gunId: string): void {
+    const data: GameSceneData = { gunId, seed: 1, mode: 'playground' };
+    this.scene.start(SceneKeys.Game, data);
   }
 }

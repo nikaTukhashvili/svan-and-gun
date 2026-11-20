@@ -7,7 +7,8 @@
  * - Time is the run clock in seconds, passed in by the caller (never Date.now()).
  */
 
-export type DpsKey = number | 'all';
+/** A target (Enemy uid), a group of targets (any string), or 'all'. */
+export type DpsKey = number | string;
 
 export interface DpsMeterOptions {
   windowSec: number;
@@ -61,7 +62,7 @@ export class DpsMeter {
 
   constructor(private readonly opts: DpsMeterOptions) {}
 
-  record(key: number, amount: number, t: number, crit: boolean, byStatus: boolean): void {
+  record(key: number | string, amount: number, t: number, crit: boolean, byStatus: boolean): void {
     this.add(key, amount, t, crit, byStatus);
     this.add('all', amount, t, crit, byStatus);
   }

@@ -5,11 +5,20 @@ import type { GameEvents, RunResult } from '../core/events';
 import { formatTime, toUnits, u } from '../core/math';
 import { RNG } from '../core/rng';
 import { getById } from '../data/registry';
-import type { GameData, GunDef, TimelineEvent } from '../data/types';
+import type { GameData, GunDef, Rarity, TimelineEvent } from '../data/types';
 import { testHookEnabled } from '../debug/testHook';
+import { PlaygroundPanel, type PlaygroundController } from '../debug/playgroundPanel';
 import { Player } from '../entities/Player';
 import { BossController, type Rubble, type SummonRequest } from '../systems/boss';
-import { applyCard, buildForGun, drawCards, swapSlots, unlockedSlots, type Card } from '../systems/build';
+import {
+  applyCard,
+  buildForGun,
+  drawCards,
+  setSlot,
+  swapSlots,
+  unlockedSlots,
+  type Card,
+} from '../systems/build';
 import { BulletSystem, REDIRECTED, type Bullet } from '../systems/bullets';
 import { Destructibles, type Destructible } from '../systems/destructibles';
 import { applyOnFire, buildPipeline, HitResolver, type Pipeline } from '../systems/modPipeline';
@@ -32,6 +41,7 @@ import { DebugOverlay, debugMode } from './game/DebugOverlay';
 import { EffectsLayer } from './game/EffectsLayer';
 import { EnemyView } from './game/EnemyView';
 import { PickupView } from './game/PickupView';
+import { Playground } from './game/Playground';
 import { ProjectileView } from './game/ProjectileView';
 import type { HudModel } from './HudScene';
 import type { LevelUpController } from './LevelUpScene';
@@ -49,6 +59,15 @@ import { KeyboardMouseInput } from './input/KeyboardMouseInput';
 export interface GameSceneData {
   gunId: string;
   seed: number;
+  /** 'playground' = Training Ground (dev tool): no timeline, immortal dummies, the build panel. */
+  mode?: 'run' | 'playground';
+  /** Training Ground options kept when switching guns. */
+  playground?: PlaygroundOptions;
+}
+
+export interface PlaygroundOptions {
+  godMode: boolean;
+  marketBuffs: boolean;
 }
 
 const BULLET_RADIUS = 4;
@@ -113,6 +132,10 @@ export class GameScene extends Phaser.Scene {
   private sfx!: Sfx;
   private numbers!: DamageNumbers;
   private ringsSeen = 0;
+  private mapKey: string = MAP_KEY;
+  /** Training Ground state; null in a normal run. */
+  private pg: { helper: Playground; panel: PlaygroundPanel | null; opts: PlaygroundOptions } | null = null;
+  private pgOptions: PlaygroundOptions | null = null;
 
   constructor() {
     super(SceneKeys.Game);
@@ -137,16 +160,23 @@ export class GameScene extends Phaser.Scene {
     this.spawnRequests.length = 0;
     this.firedEvents.length = 0;
     this.projectileRequests.length = 0;
+    const playground = data.mode === 'playground';
+    this.mapKey = playground ? this.gd.playground.map : MAP_KEY;
+    this.pgOptions = playground ? { ...(data.playground ?? { godMode: true, marketBuffs: false }) } : null;
+    this.pg = null;
   }
 
   create(): void {
     const d = this.gd;
-    const map = d.maps[MAP_KEY];
-    if (!map) throw new Error(`Map "${MAP_KEY}" not loaded`);
+    const map = d.maps[this.mapKey];
+    if (!map) throw new Error(`Map "${this.mapKey}" not loaded`);
 
     this.bus = new EventBus<GameEvents>();
     this.rng = new RNG(this.run.seed);
-    this.meta = metaBonuses(getSave(this).state, d.buffs);
+    this.meta =
+      this.pgOptions && !this.pgOptions.marketBuffs
+        ? emptyBonuses()
+        : metaBonuses(getSave(this).state, d.buffs);
     this.stats = computeStats(baseStats(d.config, d.cards), this.meta, this.run.runBonuses);
 
     this.arena = buildArena(this, map);
@@ -246,7 +276,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       if (elite) this.run.eliteKills++;
-      this.dropAt(rollEnemyDrops(d.drops, this.rng, type, elite), x, y);
+      if (!this.pgOptions) this.dropAt(rollEnemyDrops(d.drops, this.rng, type, elite), x, y);
       const scavenge = this.pipeline.magazine.scavengerChance;
       if (scavenge > 0 && this.rng.chance(scavenge)) this.weapon.addRound();
     });
@@ -260,11 +290,13 @@ export class GameScene extends Phaser.Scene {
       this.scene.stop(SceneKeys.BuildSheet);
       this.game.events.off(Phaser.Core.Events.BLUR, this.openPause, this);
       this.scene.stop(SceneKeys.LevelUp);
+      this.pg?.panel?.destroy();
       if (window.__svan) delete window.__svan.run;
     });
     // Losing focus pauses the run, so a huge frame delta cannot kill the player on return.
     this.game.events.on(Phaser.Core.Events.BLUR, this.openPause, this);
     if (debugMode) this.installDebugKeys();
+    if (this.pgOptions) this.startPlayground(this.pgOptions);
     this.installTestApi();
   }
 
@@ -299,13 +331,14 @@ export class GameScene extends Phaser.Scene {
     // Spawns
     this.spawnRequests.length = 0;
     this.firedEvents.length = 0;
-    this.director.update(
-      dt,
-      this.run.timeSec,
-      this.enemies.activeCount,
-      this.spawnRequests,
-      this.firedEvents,
-    );
+    if (!this.pg)
+      this.director.update(
+        dt,
+        this.run.timeSec,
+        this.enemies.activeCount,
+        this.spawnRequests,
+        this.firedEvents,
+      );
     for (const r of this.spawnRequests) this.handleSpawn(r, px, py);
     for (const ev of this.firedEvents) {
       this.bus.emit('timeline:event', { type: ev.type, at: ev.at });
@@ -394,8 +427,14 @@ export class GameScene extends Phaser.Scene {
     this.cursor.draw(this.weapon);
     this.numbers.update(dt);
     this.debug.update(dt);
+    this.pg?.helper.update(dt);
 
-    if (!this.levelUpOpen && !this.ended && (this.progression.pending > 0 || this.chestsPending > 0)) {
+    if (
+      !this.pg &&
+      !this.levelUpOpen &&
+      !this.ended &&
+      (this.progression.pending > 0 || this.chestsPending > 0)
+    ) {
       this.openLevelUp();
     }
   }
@@ -671,7 +710,7 @@ export class GameScene extends Phaser.Scene {
         this.showMessage('The tower bell rings. Something is coming out.', 5);
         break;
       case 'boss': {
-        const map = this.gd.maps[MAP_KEY]!;
+        const map = this.gd.maps[this.mapKey]!;
         if (this.boss.spawn(u(map.tower.x), u(map.tower.y), this.run.timeSec)) {
           this.director.bossActive = true;
           this.showMessage(this.boss.def.name, 3);
@@ -732,7 +771,8 @@ export class GameScene extends Phaser.Scene {
       quit: () => {
         this.pauseOpen = false;
         this.scene.resume();
-        this.endRun('defeat', 0);
+        if (this.pg) this.scene.start(SceneKeys.Menu);
+        else this.endRun('defeat', 0);
       },
     };
     this.scene.launch(SceneKeys.Pause, { controller });
@@ -841,6 +881,13 @@ export class GameScene extends Phaser.Scene {
   /** Show the outcome for a moment, then the results screen. */
   private endRun(result: RunResult, delayMs = 1500): void {
     if (this.ended) return;
+    if (this.pg) {
+      // Training Ground: no results, score or silver. Dying (god mode off) restarts it.
+      this.ended = true;
+      this.player.stop();
+      this.time.delayedCall(delayMs, () => this.restartPlayground(this.gun.id));
+      return;
+    }
     this.ended = true;
     this.run.result = result;
     this.player.stop();
@@ -936,8 +983,112 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  /** Kill every enemy except Training Ground dummies. */
   private killAll(): void {
-    for (const e of this.enemies.enemies) if (e.active) this.enemies.kill(e);
+    for (const e of this.enemies.enemies) if (e.active && !e.immortal) this.enemies.kill(e);
+  }
+
+  // ---------- Training Ground (dev tool) ----------
+
+  private startPlayground(opts: PlaygroundOptions): void {
+    const helper = new Playground(this, this.gd, this.enemies, this.bus, () => this.run.timeSec);
+    this.pg = { helper, panel: null, opts };
+    this.health.godMode = opts.godMode;
+    const panel = new PlaygroundPanel(this.playgroundController());
+    this.pg.panel = panel;
+    helper.onRefresh = () => panel.refreshReadout();
+    this.input.keyboard?.on('keydown-F2', (e: KeyboardEvent) => {
+      e.preventDefault();
+      panel.toggle();
+    });
+    this.showMessage('Training Ground · F2 toggles the dev panel', 4);
+  }
+
+  private restartPlayground(gunId: string): void {
+    const data: GameSceneData = {
+      gunId,
+      seed: this.run.seed,
+      mode: 'playground',
+      playground: { ...(this.pg?.opts ?? { godMode: true, marketBuffs: false }) },
+    };
+    this.scene.restart(data);
+  }
+
+  private applyPerk(cardId: string, rarity: Rarity): void {
+    const def = getById(this.gd.cards.runStats, cardId, 'run stat card');
+    const value = def.values[rarity];
+    applyCard(this.run.build, this.run.runBonuses, {
+      type: 'runStat',
+      cardId,
+      rarity,
+      stat: def.stat,
+      mode: def.mode,
+      value,
+    });
+    this.run.picks.push({ kind: 'perk', cardId, rarity, stat: def.stat, mode: def.mode, value });
+  }
+
+  private playgroundController(): PlaygroundController {
+    const pg = () => this.pg!;
+    /** Run a build change, then recompute the gun and redraw the panel. */
+    const change = (fn: () => void) => {
+      fn();
+      this.refreshStats();
+      this.pg?.panel?.render();
+    };
+    return {
+      data: this.gd,
+      gunId: () => this.gun.id,
+      build: () => this.run.build,
+      layout: () => this.pipeline.layout,
+      operators: () => this.pipeline.operators,
+      perkCounts: () => {
+        const counts: Record<string, number> = {};
+        for (const p of this.run.picks) if (p.kind === 'perk') counts[p.cardId] = (counts[p.cardId] ?? 0) + 1;
+        return counts;
+      },
+      setGun: (id) => this.restartPlayground(id),
+      setSlot: (kind, i, slot) => change(() => setSlot(this.run.build, kind, i, slot)),
+      swap: (kind, a, b) => change(() => swapSlots(this.run.build, kind, a, b)),
+      setCoreTier: (tier) =>
+        change(() => {
+          this.run.build.coreTier = tier;
+        }),
+      addPerk: (cardId, rarity) => change(() => this.applyPerk(cardId, rarity)),
+      resetBuild: () =>
+        change(() => {
+          this.run.build = buildForGun(this.gun);
+        }),
+      resetPerks: () =>
+        change(() => {
+          this.run.runBonuses = emptyBonuses();
+          this.run.picks = [];
+        }),
+      resetMeters: () => {
+        pg().helper.meter.reset();
+        pg().panel?.refreshReadout();
+      },
+      respawnDummies: () => pg().helper.respawn(),
+      clearEnemies: () => {
+        for (const e of this.enemies.enemies) if (e.active && !e.immortal) this.enemies.release(e);
+        this.projectiles.releaseAll();
+      },
+      spawnEnemies: (id, count, elite) => {
+        this.debugSpawn(id, count, elite ? { elite: true, trait: 'fast' } : {});
+      },
+      godMode: () => this.health.godMode,
+      setGodMode: (on) => {
+        this.health.godMode = on;
+        pg().opts.godMode = on;
+      },
+      marketBuffs: () => pg().opts.marketBuffs,
+      setMarketBuffs: (on) =>
+        change(() => {
+          pg().opts.marketBuffs = on;
+          this.meta = on ? metaBonuses(getSave(this).state, this.gd.buffs) : emptyBonuses();
+        }),
+      readout: () => pg().helper.stats('all'),
+    };
   }
 
   private installTestApi(): void {
@@ -1022,5 +1173,14 @@ export class GameScene extends Phaser.Scene {
           .filter((p) => p.active)
           .map((p) => ({ kind: p.kind, value: p.value, x: toUnits(p.x), y: toUnits(p.y) })),
     };
+    const pg = this.pg;
+    if (pg) {
+      window.__svan.run.playground = {
+        dps: (uid) => pg.helper.stats(uid ?? 'all'),
+        dummies: () => pg.helper.dummyStates(),
+        resetMeters: () => pg.helper.meter.reset(),
+        panelVisible: () => pg.panel?.visible ?? false,
+      };
+    }
   }
 }
