@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH, SceneKeys, UiColors } from '../config';
 import type { CardPathDef, GameData, GunDef } from '../data/types';
 import type { Card, ModSlot, RunBuild, SupportLevels } from '../systems/build';
-import { modDef, type FusionEvent } from '../systems/fusion';
+import { modDef, type FusionEvent, type Side } from '../systems/fusion';
 import type { Pipeline } from '../systems/modPipeline';
 import { isMuzzleId, muzzleDef, type MuzzleEvent } from '../systems/muzzle';
 import {
@@ -12,14 +12,17 @@ import {
   describeMuzzleEvent,
   modColor,
   modDescription,
+  MUTATION_COLOR,
   muzzleColor,
   muzzleDescription,
   muzzleEffects,
   pathContents,
   roman,
+  tierText,
 } from '../ui/cardText';
 import { createButton } from '../ui/button';
 import { getGameData } from './gameData';
+import { sfxFor, type Sfx } from './audio/Sfx';
 
 /** What GameScene gives the level-up screen. The screen draws; the controller owns the rules. */
 export interface LevelUpController {
@@ -47,12 +50,13 @@ export interface LevelUpController {
    * Apply a card. A module card must come with the barrel slot it was dropped on, a muzzle card
    * with the muzzle slot. Returns the barrel steps (empty for everything but module cards).
    */
-  pick(card: Card, slot?: number): FusionEvent[];
+  pick(card: Card, slot?: number, side?: Side): FusionEvent[];
   /** Drag a module to another slot (move, or swap with the module there). Returns the steps. */
   move(from: number, to: number): FusionEvent[];
-  /** What dropping a fresh module on `slot` would do (place / insert / merges / replace). */
+  /** What dropping a fresh module on `slot` would do (upgrade / place / insert / replace). */
   previewPlace(slot: number, modId: string): FusionEvent[];
-  previewMove(from: number, to: number): FusionEvent[];
+  /** What a Mutation dropped on `slot` would do (empty: nothing can mutate there). */
+  previewMutate(slot: number, side: Side): FusionEvent[];
   /** What dropping a muzzle card on muzzle slot `slot` would do (fit / upgrade / replace). */
   previewMuzzle(slot: number, muzzleId: string): MuzzleEvent;
   /** Drag a muzzle piece to another muzzle slot (move or swap). */
@@ -78,7 +82,10 @@ interface SlotRef {
   i: number;
 }
 
-type PlaceCard = Extract<Card, { type: 'module' | 'muzzle' }>;
+type PlaceCard = Extract<Card, { type: 'module' | 'muzzle' | 'mutation' }>;
+
+/** Workbench palette id for the Mutation card. */
+export const MUTATION_CHIP = 'mutation';
 
 const FONT = 'system-ui, sans-serif';
 const CARD_W = 340;
@@ -147,6 +154,9 @@ export class LevelUpScene extends Phaser.Scene {
   private hoverSlot: SlotRef | null = null;
   private animating = false;
   private tip: Phaser.GameObjects.Text | null = null;
+  /** Last pointer x: a Mutation prefers the neighbour on the side of the slot the pointer is on. */
+  private pointerX = 0;
+  private sfx!: Sfx;
 
   constructor() {
     super(SceneKeys.LevelUp);
@@ -164,6 +174,7 @@ export class LevelUpScene extends Phaser.Scene {
 
   create(): void {
     this.gd = getGameData(this);
+    this.sfx = sfxFor(this.game);
     // The run hides the OS cursor behind its crosshair; cards need a visible pointer.
     this.input.setDefaultCursor('default');
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input.setDefaultCursor('none'));
@@ -193,15 +204,17 @@ export class LevelUpScene extends Phaser.Scene {
     this.root.removeAll(true);
     const cx = GAME_WIDTH / 2;
 
-    if (this.animating) {
-      this.root.add(this.text(cx, 200, 'FUSING', 44, UiColors.accent, 'bold').setOrigin(0.5));
-    } else if (this.placing) {
+    if (this.placing) {
       const t = describeCard(this.gd, this.placing);
-      const where = this.placing.type === 'muzzle' ? 'a muzzle slot' : 'a slot';
+      const type = this.placing.type;
+      const where =
+        type === 'muzzle' ? 'a muzzle slot' : type === 'mutation' ? 'one of the two elements' : 'a slot';
       const how =
-        this.placing.type === 'muzzle'
+        type === 'muzzle'
           ? 'On the same piece it upgrades it; on another piece it replaces it.'
-          : 'On a filled slot it is inserted and the others slide over.';
+          : type === 'mutation'
+            ? 'They must be different elements at the max tier, side by side.'
+            : 'On the same module it upgrades it; on another it is inserted and the others slide over.';
       this.root.add(this.text(cx, 70, `Place ${t.name}`, 36, css(t.color), 'bold').setOrigin(0.5));
       this.root.add(
         this.text(cx, 190, t.body, 18, UiColors.text).setOrigin(0.5).setWordWrapWidth(900).setAlign('center'),
@@ -290,6 +303,7 @@ export class LevelUpScene extends Phaser.Scene {
 
   private pickPath(id: string): void {
     if (this.animating || this.ctl.path() !== null) return;
+    this.sfx.play('select');
     this.ctl.choosePath(id);
     this.render();
   }
@@ -307,7 +321,8 @@ export class LevelUpScene extends Phaser.Scene {
         UiColors.textDim,
       ).setOrigin(0.5),
     );
-    const group = (id: string) => (isMuzzleId(this.gd, id) ? 'muzzle' : modDef(this.gd, id).family);
+    const group = (id: string) =>
+      id === MUTATION_CHIP ? 'hybrid' : isMuzzleId(this.gd, id) ? 'muzzle' : modDef(this.gd, id).family;
     let y = 110;
     for (const g of ['element', 'hybrid', 'grey', 'fitting', 'muzzle'] as const) {
       const row = ids.filter((id) => group(id) === g);
@@ -323,6 +338,22 @@ export class LevelUpScene extends Phaser.Scene {
   }
 
   private drawChip(id: string, x: number, y: number): void {
+    if (id === MUTATION_CHIP) {
+      const chip = this.add
+        .rectangle(x, y, CHIP_W, CHIP_H, MUTATION_COLOR, 0.3)
+        .setStrokeStyle(2, MUTATION_COLOR);
+      chip.setInteractive({ useHandCursor: true });
+      chip.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => {
+        if (!this.drag)
+          this.showTip(describeCard(this.gd, { type: 'mutation' }).body.split('\n')[0]!, UiColors.textDim);
+      });
+      chip.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, (p: Phaser.Input.Pointer) => {
+        if (this.animating) return;
+        this.drag = { kind: 'card', card: { type: 'mutation' }, x0: p.x, y0: p.y, moved: false, ghost: null };
+      });
+      this.root.add([chip, this.text(x, y, 'Mutation', 14, UiColors.text, 'bold').setOrigin(0.5)]);
+      return;
+    }
     const muzzle = isMuzzleId(this.gd, id);
     const color = muzzle ? muzzleColor(this.gd, id) : modColor(this.gd, id);
     const name = muzzle ? muzzleDef(this.gd, id).name : modDef(this.gd, id).name;
@@ -339,7 +370,7 @@ export class LevelUpScene extends Phaser.Scene {
       if (this.animating) return;
       const card: Card = muzzle
         ? { type: 'muzzle', muzzleId: id, owned: false }
-        : { type: 'module', modId: id, family: modDef(this.gd, id).family, fuses: false };
+        : { type: 'module', modId: id, family: modDef(this.gd, id).family, upgrades: false };
       this.drag = { kind: 'card', card, x0: p.x, y0: p.y, moved: false, ghost: null };
     });
     this.root.add([chip, this.text(x, y, name, 14, UiColors.text, 'bold').setOrigin(0.5)]);
@@ -359,9 +390,11 @@ export class LevelUpScene extends Phaser.Scene {
     const hint =
       card.type === 'module'
         ? 'drag onto the barrel'
-        : card.type === 'muzzle'
-          ? 'drag onto the muzzle'
-          : 'click to take';
+        : card.type === 'mutation'
+          ? 'drag onto two maxed elements'
+          : card.type === 'muzzle'
+            ? 'drag onto the muzzle'
+            : 'click to take';
     this.root.add([
       box,
       this.text(x, top + 20, `[${index + 1}]  ${t.label}`, 13, css(t.color), 'bold').setOrigin(0.5),
@@ -435,7 +468,7 @@ export class LevelUpScene extends Phaser.Scene {
       if (locked) lines.push(`Lv ${this.ctl.unlockLevel(i)}`);
       else if (!slot || !def) lines.push('empty');
       else if (def.family === 'fitting') lines.push(def.name);
-      else lines.push(def.name, roman(slot.tier));
+      else lines.push(def.name, tierText(this.gd, slot));
       const label = this.text(
         cx,
         y - 6,
@@ -529,6 +562,7 @@ export class LevelUpScene extends Phaser.Scene {
       if (!this.drag && this.confirmReplace === null) this.showTip('', UiColors.textDim);
     });
     rect.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, (p: Phaser.Input.Pointer) => {
+      this.pointerX = p.x;
       if (this.animating) return;
       if (filled && !this.placing) {
         const base = { from: ref.i, x0: p.x, y0: p.y, moved: false, ghost: null };
@@ -557,6 +591,7 @@ export class LevelUpScene extends Phaser.Scene {
         this.showMuzzlePreview(this.ctl.previewMuzzle(ref.i, this.placing.muzzleId), ref.i);
       else if (this.placing.type === 'module' && ref.kind === 'barrel')
         this.showPreview(this.ctl.previewPlace(ref.i, this.placing.modId), ref.i);
+      else if (this.placing.type === 'mutation' && ref.kind === 'barrel') this.showMutationPreview(ref.i);
       else this.showWrongRow(this.placing.type);
       return;
     }
@@ -574,14 +609,34 @@ export class LevelUpScene extends Phaser.Scene {
 
   private showWrongRow(type: PlaceCard['type']): void {
     this.showTip(
-      type === 'muzzle' ? 'Muzzle pieces go in the muzzle slots' : 'Barrel modules go in the barrel',
+      type === 'muzzle'
+        ? 'Muzzle pieces go in the muzzle slots'
+        : type === 'mutation'
+          ? 'A Mutation goes on two elements in the barrel'
+          : 'Barrel modules go in the barrel',
       UiColors.danger,
     );
   }
 
+  /** Which side of slot `i` the pointer is on (a Mutation prefers that neighbour). */
+  private sideOf(i: number): Side {
+    const s = this.slots.find((v) => v.kind === 'barrel' && v.i === i);
+    return s && this.pointerX < s.x ? 'left' : 'right';
+  }
+
+  private showMutationPreview(i: number): void {
+    const events = this.ctl.previewMutate(i, this.sideOf(i));
+    if (events.length) this.showTip(describeEvents(this.gd, events), UiColors.accent);
+    else
+      this.showTip(
+        `Needs two different elements side by side, both at tier ${roman(this.gd.config.slots.maxElementTier)}`,
+        UiColors.danger,
+      );
+  }
+
   private showPreview(events: FusionEvent[], slot: number): void {
     const replace = events.some((e) => e.kind === 'replace');
-    const fuse = events.some((e) => e.kind === 'fuse');
+    const fuse = events.some((e) => e.kind === 'upgrade' || e.kind === 'mutate');
     let text = describeEvents(this.gd, events);
     if (replace)
       text += same(this.confirmReplace, { kind: 'barrel', i: slot })
@@ -615,6 +670,7 @@ export class LevelUpScene extends Phaser.Scene {
     if (d.kind === 'card') {
       if (d.card.type === 'module')
         return { name: modDef(this.gd, d.card.modId).name, color: modColor(this.gd, d.card.modId) };
+      if (d.card.type === 'mutation') return { name: 'Mutation', color: MUTATION_COLOR };
       if (d.card.type === 'muzzle')
         return {
           name: muzzleDef(this.gd, d.card.muzzleId).name,
@@ -631,6 +687,7 @@ export class LevelUpScene extends Phaser.Scene {
   }
 
   private onPointerMove(p: Phaser.Input.Pointer): void {
+    this.pointerX = p.x;
     const d = this.drag;
     if (!d) return;
     if (!d.moved) {
@@ -639,9 +696,15 @@ export class LevelUpScene extends Phaser.Scene {
       if (!look) return; // only module / muzzle cards and fitted pieces can be dragged
       d.moved = true;
       d.ghost = this.makeGhost(look.name, look.color);
+      this.sfx.play('grab');
     }
     d.ghost?.setPosition(p.x, p.y - 56); // above the pointer, so the slot under it stays readable
     const over = this.slotAt(p.x, p.y);
+    // A Mutation's preview depends on which half of the slot the pointer is over: keep updating it.
+    if (d.kind === 'card' && d.card.type === 'mutation' && over && same(over, this.hoverSlot)) {
+      if (over.kind === 'barrel') this.showMutationPreview(over.i);
+      return;
+    }
     if (same(over, this.hoverSlot) || (!over && !this.hoverSlot)) return;
     if (this.hoverSlot) this.highlight(this.hoverSlot, false);
     this.hoverSlot = over;
@@ -650,18 +713,21 @@ export class LevelUpScene extends Phaser.Scene {
       return;
     }
     this.highlight(over, true);
-    if (d.kind === 'card' && (d.card.type === 'module' || d.card.type === 'muzzle')) {
+    if (
+      d.kind === 'card' &&
+      (d.card.type === 'module' || d.card.type === 'muzzle' || d.card.type === 'mutation')
+    ) {
       const card = d.card;
       if (card.type === 'module' && over.kind === 'barrel')
         this.showPreview(this.ctl.previewPlace(over.i, card.modId), over.i);
+      else if (card.type === 'mutation' && over.kind === 'barrel') this.showMutationPreview(over.i);
       else if (card.type === 'muzzle' && over.kind === 'muzzle')
         this.showMuzzlePreview(this.ctl.previewMuzzle(over.i, card.muzzleId), over.i);
       else this.showWrongRow(card.type);
     } else if (d.kind === 'module') {
       if (over.kind !== 'barrel') return this.showWrongRow('module');
-      const merges = this.ctl.previewMove(d.from, over.i).filter((e) => e.kind !== 'move');
-      const text = merges.length ? describeEvents(this.gd, merges) : over.i === d.from ? '' : 'Move here';
-      this.showTip(text, merges.length ? UiColors.accent : UiColors.text);
+      const swap = !!this.ctl.build().barrel[over.i];
+      this.showTip(over.i === d.from ? '' : swap ? 'Swap' : 'Move here', UiColors.text);
     } else if (d.kind === 'piece') {
       if (over.kind !== 'muzzle') return this.showWrongRow('muzzle');
       this.showTip(over.i === d.from ? '' : 'Move here', UiColors.text);
@@ -688,11 +754,13 @@ export class LevelUpScene extends Phaser.Scene {
       // Workbench: something dragged off the gun (up, away from it) is removed.
       if (p.y < BARREL_Y - SLOT_H) {
         if (d.kind === 'module' && this.ctl.remove) {
+          this.sfx.play('replace');
           this.ctl.remove(d.from);
           this.render();
           return;
         }
         if (d.kind === 'piece' && this.ctl.removeMuzzle) {
+          this.sfx.play('replace');
           this.ctl.removeMuzzle(d.from);
           this.render();
           return;
@@ -701,11 +769,16 @@ export class LevelUpScene extends Phaser.Scene {
       this.showTip('', UiColors.textDim);
       return;
     }
-    if (d.kind === 'card' && (d.card.type === 'module' || d.card.type === 'muzzle'))
+    if (
+      d.kind === 'card' &&
+      (d.card.type === 'module' || d.card.type === 'muzzle' || d.card.type === 'mutation')
+    )
       this.dropCard(d.card, over);
-    else if (d.kind === 'module' && over.kind === 'barrel' && over.i !== d.from)
+    else if (d.kind === 'module' && over.kind === 'barrel' && over.i !== d.from) {
+      this.sfx.play('place');
       this.play(this.ctl.move(d.from, over.i), () => this.render());
-    else if (d.kind === 'piece' && over.kind === 'muzzle' && over.i !== d.from) {
+    } else if (d.kind === 'piece' && over.kind === 'muzzle' && over.i !== d.from) {
+      this.sfx.play('place');
       this.ctl.moveMuzzle(d.from, over.i);
       this.render();
     }
@@ -762,10 +835,24 @@ export class LevelUpScene extends Phaser.Scene {
 
   // ---------- actions ----------
 
-  /** A module or muzzle card dropped (or clicked into place) on a slot. A replace asks for a second go. */
+  /** A module, muzzle or Mutation card dropped (or clicked into place) on a slot. A replace asks for a second go. */
   private dropCard(card: PlaceCard, ref: SlotRef): void {
     if ((card.type === 'muzzle') !== (ref.kind === 'muzzle')) {
+      this.sfx.play('error');
       this.showWrongRow(card.type);
+      return;
+    }
+    if (card.type === 'mutation') {
+      const side = this.sideOf(ref.i);
+      if (this.ctl.previewMutate(ref.i, side).length === 0) {
+        this.sfx.play('error');
+        this.showMutationPreview(ref.i); // explains why not; the card stays in hand
+        return;
+      }
+      this.placing = null;
+      this.confirmReplace = null;
+      this.sfx.play('mutate');
+      this.play(this.ctl.pick(card, ref.i, side), () => this.afterPick());
       return;
     }
     if (card.type === 'muzzle') {
@@ -777,6 +864,7 @@ export class LevelUpScene extends Phaser.Scene {
       }
       this.placing = null;
       this.confirmReplace = null;
+      this.sfx.play(ev.kind === 'upgrade' ? 'upgrade' : ev.kind === 'replace' ? 'replace' : 'place');
       this.ctl.pick(card, ref.i);
       if (ev.kind === 'upgrade') this.playFlash(ref, () => this.afterPick());
       else this.afterPick();
@@ -790,7 +878,10 @@ export class LevelUpScene extends Phaser.Scene {
     }
     this.placing = null;
     this.confirmReplace = null;
-    this.play(this.ctl.pick(card, ref.i), () => this.afterPick());
+    const events = this.ctl.pick(card, ref.i);
+    const kind = events[0]?.kind;
+    this.sfx.play(kind === 'upgrade' ? 'upgrade' : kind === 'replace' ? 'replace' : 'place');
+    this.play(events, () => this.afterPick());
   }
 
   /** Continue in click mode: click (or press) the same slot again to confirm the replace. */
@@ -805,22 +896,16 @@ export class LevelUpScene extends Phaser.Scene {
     else this.showSlotInfo(ref);
   }
 
-  /** Show each step (the module landing, then one merge at a time with a flash), then `done`. */
+  /** An upgrade or a mutation: flash the slot once, then `done`. Anything else: `done` at once. */
   private play(steps: FusionEvent[], done: () => void): void {
-    const merges = steps.filter((e) => e.kind === 'fuse');
-    if (merges.length === 0) {
+    const ev = steps.find((e) => e.kind === 'upgrade' || e.kind === 'mutate');
+    if (!ev) {
       done();
       return;
     }
+    this.render(ev.after, { kind: 'barrel', i: ev.at });
     this.animating = true;
-    const landing = steps.find((e) => e.kind !== 'fuse');
-    this.render(landing ? landing.after : undefined, null);
-    merges.forEach((ev, n) => {
-      this.time.delayedCall(STEP_MS * (n + 1), () => {
-        if (ev.kind === 'fuse') this.render(ev.after, { kind: 'barrel', i: ev.at });
-      });
-    });
-    this.time.delayedCall(STEP_MS * (merges.length + 1) + 120, () => {
+    this.time.delayedCall(STEP_MS + 120, () => {
       this.animating = false;
       done();
     });
@@ -829,7 +914,7 @@ export class LevelUpScene extends Phaser.Scene {
   /** A muzzle upgrade: flash the slot once, then `done`. */
   private playFlash(ref: SlotRef, done: () => void): void {
     this.render(undefined, ref);
-    this.animating = true; // after the render: no FUSING banner for an upgrade
+    this.animating = true;
     this.time.delayedCall(STEP_MS + 80, () => {
       this.animating = false;
       done();
@@ -837,12 +922,13 @@ export class LevelUpScene extends Phaser.Scene {
   }
 
   private choose(card: Card): void {
-    if (card.type === 'module' || card.type === 'muzzle') {
+    if (card.type === 'module' || card.type === 'muzzle' || card.type === 'mutation') {
       this.placing = card;
       this.confirmReplace = null;
       this.render();
       return;
     }
+    this.sfx.play('select');
     this.ctl.pick(card);
     this.afterPick();
   }
@@ -855,6 +941,7 @@ export class LevelUpScene extends Phaser.Scene {
 
   private doReroll(): void {
     if (this.ctl.rerollsLeft() <= 0) return;
+    this.sfx.play('reroll');
     this.ctl.reroll();
     this.render();
   }

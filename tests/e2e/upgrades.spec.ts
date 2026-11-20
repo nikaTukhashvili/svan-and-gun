@@ -100,32 +100,55 @@ test('a level-up first asks for a path (Gods or Gunsmith), then shows its cards'
   expect(errors).toEqual([]);
 });
 
-test('placing a module next to the same one fuses them, with a preview first', async ({ page }) => {
+test('clicking a card onto the same module upgrades it, with a preview first', async ({ page }) => {
   const errors = trackErrors(page);
   await startRun(page, 'long_gun');
   await page.evaluate(() => {
     const run = window.__svan!.run!;
     const b = run.build();
     b.barrel[0] = { id: 'ember_shot', tier: 2 };
-    b.barrel[2] = { id: 'thunder_spark', tier: 1 };
     run.setBuild(b);
-    run.queueHand([{ type: 'module', modId: 'ember_shot', family: 'element', fuses: true }]);
+    run.queueHand([{ type: 'module', modId: 'ember_shot', family: 'element', upgrades: true }]);
     run.grantScrap(5);
   });
   await levelUpOpen(page);
   await page.keyboard.press('1'); // the Ember Shot card: now choose a slot
-  // Hover slot 2 (between Fire 2 and Thunder 1): the preview shows the cascade.
-  const [hx, hy] = await slotAt(page, 1);
+  const [hx, hy] = await slotAt(page, 0);
   const hover = await gamePoint(page, hx, hy);
   await page.mouse.move(hover.x, hover.y);
   await page.waitForTimeout(150);
-  await page.screenshot({ path: test.info().outputPath('fusion-preview.png') });
+  await page.screenshot({ path: test.info().outputPath('upgrade-preview.png') });
   await page.mouse.click(hover.x, hover.y);
   await levelUpClosed(page);
-
-  // Fire 1 + Fire 2 → Fire 3, then + Thunder 1 → Plasma 4 in slot 2; slots 1 and 3 freed.
   const build: RunBuild = await page.evaluate(() => window.__svan!.run!.build());
-  expect(build.barrel.slice(0, 3)).toEqual([null, { id: 'plasma', tier: 4 }, null]);
+  expect(build.barrel.slice(0, 2)).toEqual([{ id: 'ember_shot', tier: 3 }, null]);
+  expect(errors).toEqual([]);
+});
+
+test('a Mutation dragged onto two maxed elements makes their hybrid', async ({ page }) => {
+  const errors = trackErrors(page);
+  await startRun(page, 'long_gun');
+  await page.evaluate(() => {
+    const run = window.__svan!.run!;
+    const b = run.build();
+    b.barrel[0] = { id: 'ember_shot', tier: 3 };
+    b.barrel[1] = { id: 'thunder_spark', tier: 3 };
+    run.setBuild(b);
+    run.queueHand([{ type: 'mutation' }]);
+    run.grantScrap(5);
+  });
+  await levelUpOpen(page);
+  const card = await gamePoint(page, 640, 270);
+  const [sx, sy] = await slotAt(page, 0);
+  const slot = await gamePoint(page, sx + 20, sy); // right half of slot 1: the pair with slot 2
+  await page.mouse.move(card.x, card.y);
+  await page.mouse.down();
+  await page.mouse.move(slot.x, slot.y, { steps: 12 });
+  await page.screenshot({ path: test.info().outputPath('mutation-preview.png') });
+  await page.mouse.up();
+  await levelUpClosed(page);
+  const build: RunBuild = await page.evaluate(() => window.__svan!.run!.build());
+  expect(build.barrel.slice(0, 2)).toEqual([{ id: 'plasma', tier: 3 }, null]);
   expect(errors).toEqual([]);
 });
 
@@ -138,7 +161,7 @@ test('dragging a module card onto a filled slot inserts it; the others slide ove
     b.barrel[0] = { id: 'ember_shot', tier: 1 };
     b.barrel[1] = { id: 'twin_shot', tier: 1 };
     run.setBuild(b);
-    run.queueHand([{ type: 'module', modId: 'ricochet', family: 'grey', fuses: false }]);
+    run.queueHand([{ type: 'module', modId: 'ricochet', family: 'grey', upgrades: false }]);
     run.grantScrap(5);
   });
   await levelUpOpen(page);
@@ -162,23 +185,42 @@ test('dragging a module card onto a filled slot inserts it; the others slide ove
   expect(errors).toEqual([]);
 });
 
-test('dragging a card next to the same module merges them, with an animation', async ({ page }) => {
+test('a card dropped next to the same module stays separate; dropped on it, it upgrades', async ({
+  page,
+}) => {
+  const ember = { type: 'module', modId: 'ember_shot', family: 'element', upgrades: true } as const;
   await startRun(page, 'long_gun');
-  await page.evaluate(() => {
+  await page.evaluate((card) => {
     const run = window.__svan!.run!;
     const b = run.build();
     b.barrel[0] = { id: 'ember_shot', tier: 1 };
     run.setBuild(b);
-    run.queueHand([{ type: 'module', modId: 'ember_shot', family: 'element', fuses: true }]);
+    run.queueHand([card]);
     run.grantScrap(5);
-  });
+  }, ember);
   await levelUpOpen(page);
-  await dragGame(page, [640, 270], await slotAt(page, 1));
-  await page.waitForTimeout(120);
-  await page.screenshot({ path: test.info().outputPath('merge-animation.png') });
+  await dragGame(page, [640, 270], await slotAt(page, 1)); // next to it
   await levelUpClosed(page);
-  const build: RunBuild = await page.evaluate(() => window.__svan!.run!.build());
-  expect(build.barrel.slice(0, 2)).toEqual([null, { id: 'ember_shot', tier: 2 }]);
+  let build: RunBuild = await page.evaluate(() => window.__svan!.run!.build());
+  expect(build.barrel.slice(0, 2)).toEqual([
+    { id: 'ember_shot', tier: 1 },
+    { id: 'ember_shot', tier: 1 },
+  ]);
+
+  await page.evaluate((card) => {
+    window.__svan!.run!.queueHand([card]);
+    window.__svan!.run!.grantScrap(15);
+  }, ember);
+  await levelUpOpen(page);
+  await dragGame(page, [640, 270], await slotAt(page, 0)); // onto it
+  await page.waitForTimeout(120);
+  await page.screenshot({ path: test.info().outputPath('upgrade-flash.png') });
+  await levelUpClosed(page);
+  build = await page.evaluate(() => window.__svan!.run!.build());
+  expect(build.barrel.slice(0, 2)).toEqual([
+    { id: 'ember_shot', tier: 2 },
+    { id: 'ember_shot', tier: 1 },
+  ]);
 });
 
 test('dragging a module onto another slot swaps them', async ({ page }) => {
@@ -285,7 +327,7 @@ for (const gunId of ['long_gun', 'double_barrel', 'scrap_smg'] as const) {
         { id: 'overcharger', tier: 1 },
         { id: 'thunder_spark', tier: 1 },
         { id: 'booster_right', tier: 1 },
-        { id: 'plasma', tier: 5 },
+        { id: 'plasma', tier: 3 },
         { id: 'twin_shot', tier: 2 },
         { id: 'brace', tier: 1 },
         { id: 'heavy_slug', tier: 1 },

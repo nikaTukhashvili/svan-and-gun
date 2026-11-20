@@ -230,3 +230,24 @@ _Add dated notes here as tasks complete (decisions, deviations, follow-ups)._
 - Hybrids: Steam (fire + frost: burn, chill, steam burst on freeze), Frostbite (poison + frost: poison ×2 on chilled enemies), Hailstorm (lightning + frost: chains chill everyone reached). 21 barrel modules now (4 elements, 6 hybrids).
 - Visuals: chilled enemies tinted blue, frozen ones filled ice-white, a pale flash when one freezes.
 - Tests: `tests/unit/frost.test.ts`.
+
+**2026-11-21 · No automatic merging; upgrades by drop; Mutation (branch `barrel-fusion`)**
+
+- Playtest: modules merging by themselves took control away, and hybrids came too early and too strong.
+- Nothing merges by itself. A module card dropped onto the same module upgrades it one tier. Elements cap at tier V (`config.slots.maxElementTier`); grey modules have no cap.
+- Mutation (new Favor of the Gods card, `typeWeights.mutation`): dragged onto two different elements at tier V side by side, they become their hybrid at tier V; offered only when such a pair exists. Hybrids are final.
+- Moving a module only moves or swaps it. `cards.fusesWithOwnedMult` → `upgradesOwnedMult`; module cards say CAN UPGRADE. Tinker only raises modules below their max.
+- Tests: `fusion.test.ts` rewritten; Mutation in `build.test.ts`; e2e upgrade-by-drop and Mutation drag.
+- Same day, after playtest: the element cap went from V to III (`maxElementTier: 3`); at V no mutation happened in a run. Hybrids are made at III.
+
+**2026-11-21 · More sound effects (branch `barrel-fusion`)**
+
+- Still synthesized with WebAudio (no files). New: crit, lightning zap, freeze, burst (Steam/Brimstone), grenade throw, enemy shot, silver, heal (kubdari), hunting horn, chest, elite arrival, boss arrival, victory, defeat, menu click, and level-up screen sounds (path choice, grab, place, upgrade, Mutation, replace, refused drop, reroll).
+- One shared sound bank per game (`sfxFor`); combat sounds vary their pitch slightly. The Training Ground panel has a Sound test.
+- Music is not added yet (the user is choosing a source).
+
+**2026-11-21 · Temporary soundtrack (branch `barrel-fusion`)**
+
+- One looping track for the whole game: `public/audio/run.mp3` (the user's Suno track "Towers of Stubborn"). Loaded in the background when the menu first opens, so boot does not wait for it; plays after the first click (browser audio unlock).
+- Settings: Music volume and a mute toggle (saved; `musicVolume` / `musicMuted` default in the schema, so older saves stay valid). M mutes anywhere.
+- Skipped under automation (`navigator.webdriver`); `tests/e2e/music.spec.ts` hides that flag to test the real path.

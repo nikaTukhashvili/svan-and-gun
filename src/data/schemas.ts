@@ -73,6 +73,8 @@ export const ConfigSchema = z.strictObject({
     /** Barrel slots on any gun (GDD: no gun has more than 12). */
     maxTotalSlots: posInt,
     maxCoreTier: posInt,
+    /** Elements stop upgrading at this tier; two different maxed elements can mutate. Hybrids are made at it. */
+    maxElementTier: posInt,
   }),
   enemies: z.strictObject({
     hpScalePerMinute: nonNeg,
@@ -145,10 +147,11 @@ export const GunsSchema = z.array(GunSchema).min(1);
 export const ElementSchema = z.enum(['fire', 'poison', 'lightning', 'frost']);
 /**
  * Barrel module families (GDD: Barrel fusion):
- * - element: fuses with the same element, or with a different element into a hybrid;
- * - hybrid: made from two elements; grows only from the same hybrid;
- * - grey: projectile shape; grows from the same module;
- * - fitting: directional, never fuses; multiplies its neighbours' strength.
+ * - element: upgrades when the same card is dropped on it (up to maxElementTier); two different
+ *   maxed elements side by side can MUTATE into their hybrid (Mutation card);
+ * - hybrid: made by a Mutation at maxElementTier; final (never upgrades or mutates);
+ * - grey: projectile shape; upgrades when the same card is dropped on it (no cap);
+ * - fitting: directional, never upgrades; multiplies its neighbours' strength.
  */
 export const ModFamilySchema = z.enum(['element', 'hybrid', 'grey', 'fitting']);
 
@@ -473,6 +476,7 @@ export const CardTypeSchema = z.enum([
   'supportPerk',
   'muzzle',
   'tinker',
+  'mutation',
 ]);
 
 /**
@@ -508,9 +512,11 @@ export const CardsSchema = z.strictObject({
     muzzle: nonNeg,
     /** Tinker (random +1 tiers for barrel modules). */
     tinker: nonNeg,
+    /** Mutation (two maxed elements side by side become their hybrid); only offered when possible. */
+    mutation: nonNeg,
   }),
   /** A module card that would fuse with a module already in the barrel weighs this many times more. */
-  fusesWithOwnedMult: z.number().min(1),
+  upgradesOwnedMult: z.number().min(1),
   rarity: z.strictObject({
     weights: byRarity(nonNeg),
     /** Added to the rare/epic weights per player level above 1. */

@@ -10,7 +10,7 @@ import { RNG } from '../../src/core/rng';
 import { createBuild, type RunBuild } from '../../src/systems/build';
 import { BulletSystem } from '../../src/systems/bullets';
 import { EnemySystem, type Enemy } from '../../src/systems/enemies';
-import { fuseResult } from '../../src/systems/fusion';
+import { hybridOf } from '../../src/systems/fusion';
 import { buildPipeline, HitResolver } from '../../src/systems/modPipeline';
 import { ObstacleField } from '../../src/systems/obstacles';
 import { StatusEffectSystem, type ChillSpec } from '../../src/systems/status';
@@ -124,11 +124,10 @@ describe('chill and freeze', () => {
 });
 
 describe('Frost Shot and its hybrids', () => {
-  it('Frost fuses with each element into its hybrid', () => {
-    const m = (id: string) => ({ id, tier: 1 });
-    expect(fuseResult(data, m('frost_shot'), m('ember_shot'))).toEqual({ id: 'steam', tier: 2 });
-    expect(fuseResult(data, m('venom_shot'), m('frost_shot'))).toEqual({ id: 'frostbite', tier: 2 });
-    expect(fuseResult(data, m('frost_shot'), m('thunder_spark'))).toEqual({ id: 'hailstorm', tier: 2 });
+  it('Frost mutates with each element into its hybrid', () => {
+    expect(hybridOf(data, 'frost_shot', 'ember_shot')).toBe('steam');
+    expect(hybridOf(data, 'venom_shot', 'frost_shot')).toBe('frostbite');
+    expect(hybridOf(data, 'frost_shot', 'thunder_spark')).toBe('hailstorm');
   });
 
   it('Frost Shot hits add chill stacks', () => {

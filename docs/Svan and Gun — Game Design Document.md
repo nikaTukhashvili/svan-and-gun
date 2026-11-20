@@ -150,7 +150,7 @@ The Core itself can be improved during a run with **Core Tier** upgrades (Tier I
 
 ### Barrel: fusion (decided 2026-11-20, replaces slot order, operators, levels and the magazine)
 
-The barrel is a row of slots. Each slot holds one **module**. Where a module sits does not change what it does to a bullet; what matters is **what it sits next to**: matching neighbours fuse, and fittings change their neighbours.
+The barrel is a row of slots. Each slot holds one **module**. Where a module sits does not change what it does to a bullet; what matters is **what it sits next to**: fittings change their neighbours, and two maxed elements side by side can be mutated into a hybrid.
 
 **Barrel length and twist depend on the gun** (`guns.json` > barrel). No gun has more than 12 slots. Slots open with level (`config.slots.barrelUnlockLevels`: 4 at the start, then one more at levels 4, 7, 10 and 13), so space stays scarce and growth stays visible.
 
@@ -162,27 +162,28 @@ The barrel is a row of slots. Each slot holds one **module**. Where a module sit
 
 **Module families**
 
-| Family | Modules | Fuses with |
+| Family | Modules | Grows by |
 | --- | --- | --- |
-| Element (colour) | Ember Shot (fire, red), Venom Shot (poison, green), Thunder Spark (lightning, yellow), Frost Shot (frost, blue; added 2026-11-21) | The same element; or a different element, making their hybrid |
-| Hybrid (mixed colour) | Plasma = fire + lightning (orange), Brimstone = fire + poison (amber), Blight Arc = poison + lightning (teal), Steam = fire + frost (pale), Frostbite = poison + frost (violet), Hailstorm = lightning + frost (ice blue) | Only the same hybrid (its parent elements do not feed it). Never offered as a card: only made by fusing |
-| Grey | Twin Shot, Ricochet, Long Rifling, Piercing Bore, Heavy Slug, Split Shot | Only the same module |
-| Fitting (directional) | Booster ▶, ◀ Booster, ◀ Brace ▶, Overcharger, Siphon | Never fuses |
+| Element (colour) | Ember Shot (fire, red), Venom Shot (poison, green), Thunder Spark (lightning, yellow), Frost Shot (frost, blue; added 2026-11-21) | Dropping the same element on it, up to tier III. Two different elements at III can be mutated into their hybrid |
+| Hybrid (mixed colour) | Plasma = fire + lightning (orange), Brimstone = fire + poison (amber), Blight Arc = poison + lightning (teal), Steam = fire + frost (pale), Frostbite = poison + frost (violet), Hailstorm = lightning + frost (ice blue) | Never: made at tier III by a Mutation, then final. Never offered as a card |
+| Grey | Twin Shot, Ricochet, Long Rifling, Piercing Bore, Heavy Slug, Split Shot | Dropping the same module on it (no cap) |
+| Fitting (directional) | Booster ▶, ◀ Booster, ◀ Brace ▶, Overcharger, Siphon | Never |
 
-**Tiers and fusing**
+**Upgrades and Mutation** (revised 2026-11-21 after playtest: automatic merging took control away, and hybrids came too early and too strong)
 
-- A module's **tier is how many copies are fused into it**. A new card is tier 1. There is no cap.
-- Fusing **adds tiers**: Fire 2 + Fire 1 = Fire 3; Fire 3 + Thunder 2 = Plasma 5; Plasma 5 + Fire 1 = Plasma 6. Copies are never wasted.
+- **Nothing merges by itself.** Two modules side by side stay two modules, even two Ember Shots, even Ember next to Thunder.
+- **Upgrade:** a module card dropped **onto** the same module raises it one tier (Ember I → Ember II). A new card is tier 1.
+- **Elements stop at tier III** (`config.slots.maxElementTier`; lowered from V on 2026-11-21 because mutations came too late). Grey modules have no cap. Fittings never upgrade.
+- **Mutation:** a **Favor of the Gods** card. Dragged onto two **different elements side by side, both at tier III**, they become their **hybrid** in one slot and the other slot empties. Over the right half of a slot it pairs with the right neighbour, over the left half with the left one. It is only offered when such a pair exists.
+- **Hybrids are final:** made at tier III, they never upgrade or mutate again (one mutation for now; more may come later).
 - Numbers grow with tier by a formula per module: value = base + perTier × (tier − 1) (`barrelMods.json` > base, perTier). Counts (chains, bounces, shards, bullets, stacks) are rounded.
-- Why no cap and why tiers add: with "two equal tiers make the next tier, max III" a Tier III module needed 4 copies and spare slots to build the half-made parts, so in a full barrel the last slots could never max out. Feeding a copy straight onto a module needs no spare slot.
 
-**Placing and moving** (Colossatron-style drag and drop, revised 2026-11-20 after playtest)
+**Placing and moving** (drag and drop)
 
 - The player **drags** a module card onto a barrel slot (clicking the card, then a slot or its number key, also works).
-- An empty slot takes it. On a filled slot the module is **inserted**: the modules on one side slide one slot towards the nearest empty slot in the same half (right first, never into a locked slot). A drop never upgrades a module by itself, so the same module dropped elsewhere stays a separate copy.
-- Matches that end up **side by side merge at once**, shown step by step with a flash. Merges keep going while a match is next to the result (a **cascade**): same module first, then left before right. Example: `[Fire 1][ ][Thunder 1]` + Fire into the middle → Fire 2 → Plasma 3. A slide that brings two matches together merges them too.
-- When a barrel half is full, a drop feeds a matching module in place, or else **replaces** the module there (asks for a second click).
-- Dragging a module inside the barrel moves it (or swaps it with the module there); matches brought together merge.
+- On the same module (below its max) it **upgrades** it, with a flash. An empty slot takes it. On a different module (or a maxed one) it is **inserted**: the modules on one side slide one slot towards the nearest empty slot in the same half (right first, never into a locked slot).
+- When a barrel half is full, a drop on a different module **replaces** it (asks for a second click).
+- Dragging a module inside the barrel only moves it (or swaps it with the module there).
 - While dragging, the slot under the pointer shows exactly what will happen.
 
 **Fittings** multiply the strength of their neighbours in the same half of the barrel. A fitting next to an empty slot or another fitting does nothing.
@@ -195,7 +196,7 @@ The barrel is a row of slots. Each slot holds one **module**. Where a module sit
 | Overcharger | +100% | −50% |
 | Siphon | −40% | +80% |
 
-**Modules at tier 1** (numbers from `barrelMods.json`; on-hit effects follow the pellet rule)
+**Modules at tier 1** (numbers from `barrelMods.json`; on-hit effects follow the pellet rule; hybrids are made at tier III, so their "each extra tier" column is how they get there)
 
 | Module | Tier 1 | Each extra tier |
 | --- | --- | --- |
@@ -333,7 +334,7 @@ Killed enemies drop **scrap** (XP). Each full scrap bar is a level-up: the game 
 
 | Path | Offers |
 | --- | --- |
-| **Favor of the Gods** | Elements (Ember Shot, Venom Shot, Thunder Spark, Frost Shot) and **blessings** (the run stat cards: +move speed, +max HP…; they move onto items once items exist) |
+| **Favor of the Gods** | Elements (Ember Shot, Venom Shot, Thunder Spark, Frost Shot), **Mutation** (two maxed elements → their hybrid, offered only when possible) and **blessings** (the run stat cards: +move speed, +max HP…; they move onto items once items exist) |
 | **Gunsmith** | Grey barrel modules, fittings, muzzle pieces, magazine work (the support perks), Core Tier, Tinker |
 
 - Choosing a path is a commitment for that level-up: there is no going back to look at the other path. The reroll redraws the 3 cards within the chosen path.

@@ -27,7 +27,7 @@ export interface PlaygroundController {
   /** Times each run stat perk was taken. */
   perkCounts(): Readonly<Record<string, number>>;
   setGun(id: string): void;
-  /** `fuse`: place it like a card (fuses with neighbours); otherwise set it exactly. */
+  /** `fuse`: place it like a card (upgrade the same module / insert); otherwise set it exactly. */
   setSlot(index: number, slot: ModSlot | null, fuse: boolean): void;
   swap(a: number, b: number, fuse: boolean): void;
   /** Put a muzzle piece (or nothing) in a muzzle slot. */
@@ -41,6 +41,9 @@ export interface PlaygroundController {
   respawnDummies(): void;
   /** The real level-up screen in Workbench mode: drag and drop every module. */
   openWorkbench(): void;
+  /** Sound test: play one sound effect. */
+  playSound(name: string): void;
+  readonly soundNames: readonly string[];
   clearEnemies(): void;
   spawnEnemies(id: string, count: number, elite: boolean): void;
   godMode(): boolean;
@@ -104,7 +107,7 @@ export class PlaygroundPanel {
   private readonly root: HTMLDivElement;
   private readonly body: HTMLDivElement;
   private readonly readoutBox: HTMLDivElement;
-  /** Panel option: placing or swapping fuses like in a run. */
+  /** Panel option: placing works like dropping a card in a run. */
   private fuse = false;
 
   constructor(private readonly ctl: PlaygroundController) {
@@ -187,7 +190,7 @@ export class PlaygroundPanel {
     sections.push(
       el('h3', {}, 'Barrel'),
       bench,
-      this.checkbox('Fuse on place / swap (like a run)', this.fuse, (on) => {
+      this.checkbox('Place like a card (upgrade / insert, as in a run)', this.fuse, (on) => {
         this.fuse = on;
       }),
       ...this.slotRows(build.barrel),
@@ -296,6 +299,21 @@ export class PlaygroundPanel {
         this.button('Spawn', () =>
           this.ctl.spawnEnemies(enemySel.value, Number(countSel.value), elite.checked),
         ),
+      ),
+    );
+
+    const soundSel = this.select(
+      this.ctl.soundNames.map((n): [string, string] => [n, n]),
+      this.ctl.soundNames[0] ?? '',
+      (v) => this.ctl.playSound(v),
+    );
+    sections.push(
+      el('h3', {}, 'Sound test'),
+      el(
+        'div',
+        { class: 'row' },
+        soundSel,
+        this.button('Play', () => this.ctl.playSound(soundSel.value)),
       ),
     );
 

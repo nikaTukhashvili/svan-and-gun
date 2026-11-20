@@ -5,6 +5,7 @@ import { markReady } from '../debug/testHook';
 import { createButton } from '../ui/button';
 import type { GameSceneData } from './GameScene';
 import { getGameData } from './gameData';
+import { bindMusicKeys, startMusic } from './audio/Music';
 import { getSave, saveNoticeText } from './meta';
 
 /** Main menu (T33): Start, Market, High Scores, Settings, with the silver balance. */
@@ -16,6 +17,8 @@ export class MenuScene extends Phaser.Scene {
   create(): void {
     const data = getGameData(this);
     const save = getSave(this);
+    startMusic(this);
+    bindMusicKeys(this);
     const cx = GAME_WIDTH / 2;
     const font = 'system-ui, sans-serif';
 

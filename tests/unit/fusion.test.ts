@@ -1,20 +1,31 @@
+/**
+ * Barrel rules (revised 2026-11-21): nothing merges by itself; a card dropped on the same module
+ * upgrades it (elements cap at maxElementTier); a Mutation turns two maxed, different elements side
+ * by side into their hybrid; hybrids are final; moving only moves or swaps.
+ */
 import { describe, expect, it } from 'vitest';
 import { getById } from '../../src/data/registry';
 import type { TieredModDef } from '../../src/data/types';
 import { createBuild, type RunBuild } from '../../src/systems/build';
 import {
-  fuseResult,
-  fusesWithOwned,
+  canMutate,
+  hybridOf,
+  maxTier,
   modDef,
-  place,
-  previewPlace,
   moveModule,
+  mutate,
+  mutationPairs,
+  place,
+  previewMutate,
+  previewPlace,
   tierParams,
+  upgradesOwned,
 } from '../../src/systems/fusion';
 import { layoutOf } from '../../src/systems/modPipeline';
 import { loadGameData } from '../helpers/loadData';
 
 const data = loadGameData();
+const MAX = data.config.slots.maxElementTier;
 const m = (id: string, tier = 1) => ({ id, tier });
 
 /** A plain 8-slot barrel (one chain, no twist) from "id:tier" specs. */
@@ -30,44 +41,16 @@ function barrel(specs: (string | null)[], slots = 8): RunBuild {
 const plain = (b: RunBuild) => layoutOf(null, b.barrel.length);
 const show = (b: RunBuild) => b.barrel.map((s) => (s ? `${s.id}:${s.tier}` : null));
 
-describe('fuseResult: tiers add, with no cap', () => {
-  it('same module + same module adds tiers', () => {
-    expect(fuseResult(data, m('ember_shot', 2), m('ember_shot', 1))).toEqual(m('ember_shot', 3));
-    expect(fuseResult(data, m('twin_shot', 7), m('twin_shot', 5))).toEqual(m('twin_shot', 12));
-  });
-
-  it('two different elements make their hybrid, keeping every copy', () => {
-    expect(fuseResult(data, m('ember_shot', 3), m('thunder_spark', 2))).toEqual(m('plasma', 5));
-    expect(fuseResult(data, m('venom_shot'), m('ember_shot'))).toEqual(m('brimstone', 2));
-    expect(fuseResult(data, m('thunder_spark'), m('venom_shot'))).toEqual(m('blight_arc', 2));
-  });
-
-  it('a hybrid grows only from the same hybrid: no element feeds it', () => {
-    expect(fuseResult(data, m('plasma', 5), m('ember_shot'))).toBeNull();
-    expect(fuseResult(data, m('thunder_spark'), m('plasma', 5))).toBeNull();
-    expect(fuseResult(data, m('plasma', 2), m('plasma', 2))).toEqual(m('plasma', 4));
-    expect(fuseResult(data, m('plasma'), m('venom_shot'))).toBeNull();
-    expect(fuseResult(data, m('plasma'), m('brimstone'))).toBeNull();
-  });
-
-  it('grey modules only fuse with themselves; fittings never fuse', () => {
-    expect(fuseResult(data, m('twin_shot'), m('ricochet'))).toBeNull();
-    expect(fuseResult(data, m('twin_shot'), m('ember_shot'))).toBeNull();
-    expect(fuseResult(data, m('booster_right'), m('booster_right'))).toBeNull();
-    expect(fuseResult(data, m('ember_shot'), m('brace'))).toBeNull();
-  });
-});
-
 describe('tierParams: base + perTier × (tier − 1)', () => {
   const def = (id: string) => modDef(data, id) as TieredModDef;
 
-  it('tier 1 is the base; numbers keep growing past tier 3', () => {
+  it('tier 1 is the base; numbers grow per tier', () => {
     const d = def('ember_shot');
     expect(tierParams(d, 1)).toEqual(d.base);
-    const t10 = tierParams(d, 10) as Record<string, number>;
+    const t5 = tierParams(d, 5) as Record<string, number>;
     const base = d.base as Record<string, number>;
     const per = d.perTier as Record<string, number>;
-    expect(t10.maxStacks).toBe(base.maxStacks! + per.maxStacks! * 9);
+    expect(t5.maxStacks).toBe(base.maxStacks! + per.maxStacks! * 4);
   });
 
   it('count params are whole numbers and never drop below tier 1', () => {
@@ -76,56 +59,57 @@ describe('tierParams: base + perTier × (tier − 1)', () => {
       expect(Number.isInteger(p.bullets)).toBe(true);
       expect(p.bullets).toBeGreaterThanOrEqual(2);
     }
-    expect((tierParams(def('twin_shot'), 3) as Record<string, number>).bullets).toBe(3);
   });
 });
 
-describe('place: put, fuse, cascade, replace', () => {
-  it('into an empty slot with no match it is just placed', () => {
+describe('placing: nothing merges by itself', () => {
+  it('two of the same element side by side stay separate', () => {
     const b = barrel(['ember_shot']);
-    const ev = place(data, b, plain(b), 2, m('twin_shot'));
-    expect(ev).toHaveLength(1);
-    expect(ev[0]).toMatchObject({ kind: 'place', at: 2, mod: m('twin_shot') });
-    expect(show(b).slice(0, 3)).toEqual(['ember_shot:1', null, 'twin_shot:1']);
+    const ev = place(data, b, plain(b), 1, m('ember_shot'));
+    expect(ev.map((e) => e.kind)).toEqual(['place']);
+    expect(show(b).slice(0, 2)).toEqual(['ember_shot:1', 'ember_shot:1']);
   });
 
-  it('next to a match it fuses into the placed slot and frees the other', () => {
-    const b = barrel(['ember_shot:2']);
-    place(data, b, plain(b), 1, m('ember_shot'));
-    expect(show(b).slice(0, 2)).toEqual([null, 'ember_shot:3']);
+  it('two different elements side by side stay separate (no automatic hybrid)', () => {
+    const b = barrel([`ember_shot:${MAX}`]);
+    place(data, b, plain(b), 1, m('thunder_spark'));
+    expect(show(b).slice(0, 2)).toEqual([`ember_shot:${MAX}`, 'thunder_spark:1']);
   });
 
-  it('on a filled slot it is inserted and the others slide over: the same module dropped elsewhere stays separate', () => {
+  it('a card dropped ON the same module upgrades it one tier', () => {
+    const b = barrel(['ember_shot:2', 'twin_shot:4']);
+    expect(place(data, b, plain(b), 0, m('ember_shot'))[0]).toMatchObject({
+      kind: 'upgrade',
+      at: 0,
+      before: m('ember_shot', 2),
+      result: m('ember_shot', 3),
+    });
+    place(data, b, plain(b), 1, m('twin_shot'));
+    expect(show(b).slice(0, 3)).toEqual(['ember_shot:3', 'twin_shot:5', null]);
+  });
+
+  it('elements stop at the max tier; grey modules have no cap; fittings never upgrade', () => {
+    expect(maxTier(data, 'frost_shot')).toBe(MAX);
+    expect(maxTier(data, 'twin_shot')).toBe(Infinity);
+    expect(maxTier(data, 'brace')).toBe(1);
+    const b = barrel([`ember_shot:${MAX}`, 'brace']);
+    const ev = place(data, b, plain(b), 0, m('ember_shot')); // maxed: inserted as a new one
+    expect(ev[0]!.kind).toBe('insert');
+    expect(show(b).slice(0, 3)).toEqual(['ember_shot:1', `ember_shot:${MAX}`, 'brace:1']);
+  });
+
+  it('on a different module it is inserted and the others slide towards the nearest gap', () => {
     const b = barrel(['ember_shot', 'twin_shot']);
-    place(data, b, plain(b), 1, m('ricochet')); // onto Twin: Twin slides right
+    const ev = place(data, b, plain(b), 1, m('ricochet'));
+    expect(ev[0]).toMatchObject({ kind: 'insert', at: 1, gap: 2 });
     expect(show(b).slice(0, 4)).toEqual(['ember_shot:1', 'ricochet:1', 'twin_shot:1', null]);
-    place(data, b, plain(b), 3, m('ember_shot')); // not next to the other Fire: two separate Fires
-    expect(show(b).slice(0, 4)).toEqual(['ember_shot:1', 'ricochet:1', 'twin_shot:1', 'ember_shot:1']);
   });
 
-  it('inserting next to a match merges them (it never upgrades by being dropped on)', () => {
-    const b = barrel(['ember_shot', 'twin_shot']);
-    const ev = place(data, b, plain(b), 1, m('ember_shot')); // Fire inserted at 1, next to Fire
-    expect(ev.map((e) => e.kind)).toEqual(['insert', 'fuse']);
-    expect(ev[0]!.after.slice(0, 3)).toEqual([m('ember_shot'), m('ember_shot'), m('twin_shot')]); // the landing
-    expect(show(b).slice(0, 3)).toEqual([null, 'ember_shot:2', 'twin_shot:1']);
-  });
-
-  it('a slide that brings two matches together merges them too', () => {
-    const b = barrel(['split_shot', 'twin_shot', null, 'twin_shot']);
-    place(data, b, plain(b), 0, m('heavy_slug')); // the first two slide right into the gap
-    expect(show(b).slice(0, 4)).toEqual(['heavy_slug:1', 'split_shot:1', 'twin_shot:2', null]);
-  });
-
-  it('slides towards the nearest gap on the right first, else the left; never into locked slots', () => {
+  it('never slides into locked slots; a full chain replaces', () => {
     const b = barrel([null, 'ember_shot', 'twin_shot', 'ricochet']);
     place(data, b, plain(b), 2, m('heavy_slug'), 4); // no gap to the right within 4 open slots
     expect(show(b).slice(0, 5)).toEqual(['ember_shot:1', 'twin_shot:1', 'heavy_slug:1', 'ricochet:1', null]);
-  });
-
-  it('a full barrel half feeds a matching module in place, and replaces anything else', () => {
-    const ids = [
-      'ember_shot:4',
+    const full = barrel([
       'twin_shot',
       'heavy_slug',
       'ricochet',
@@ -133,85 +117,79 @@ describe('place: put, fuse, cascade, replace', () => {
       'long_rifling',
       'piercing_bore',
       'brace',
-    ];
-    const b = barrel(ids);
-    place(data, b, plain(b), 0, m('ember_shot'));
-    expect(b.barrel[0]).toEqual(m('ember_shot', 5));
-    const ev = place(data, b, plain(b), 1, m('ricochet'));
-    expect(ev[0]).toMatchObject({ kind: 'replace', at: 1, old: m('twin_shot'), by: m('ricochet') });
+      'siphon',
+    ]);
+    const ev = place(data, full, plain(full), 1, m('ricochet'));
+    expect(ev[0]).toMatchObject({ kind: 'replace', at: 1, old: m('heavy_slug'), by: m('ricochet') });
   });
 
-  it('cascades: Fire next to Fire next to Thunder becomes Plasma', () => {
-    // [Fire 1][   ][Thunder 2]  + Fire into slot 1 → Fire 2 (fuses left first: same module)…
-    const b = barrel(['ember_shot', null, 'thunder_spark:2']);
-    const ev = place(data, b, plain(b), 1, m('ember_shot'));
-    expect(show(b).slice(0, 3)).toEqual([null, 'plasma:4', null]);
-    expect(ev.filter((e) => e.kind === 'fuse')).toHaveLength(2);
-  });
-
-  it('a same-module neighbour wins over a hybrid; otherwise left before right', () => {
-    const b = barrel(['thunder_spark', null, 'ember_shot']);
-    place(data, b, plain(b), 1, m('ember_shot'));
-    // Fire + right Fire first (same module) → Fire 2, then Fire 2 + left Thunder → Plasma 3.
-    expect(show(b).slice(0, 3)).toEqual([null, 'plasma:3', null]);
-
-    const c = barrel(['venom_shot', null, 'thunder_spark']);
-    place(data, c, plain(c), 1, m('ember_shot'));
-    // No same-module neighbour: left (Venom) first → Brimstone 2; it cannot take Thunder.
-    expect(show(c).slice(0, 3)).toEqual([null, 'brimstone:2', 'thunder_spark:1']);
-  });
-
-  it('fittings are placed and never fuse', () => {
-    const b = barrel(['booster_right']);
-    place(data, b, plain(b), 1, m('booster_right'));
-    expect(show(b).slice(0, 2)).toEqual(['booster_right:1', 'booster_right:1']);
-  });
-
-  it('nothing fuses across the Double Barrel gap', () => {
-    const gun = getById(data.guns, 'double_barrel', 'gun');
-    const b = createBuild(gun.barrel.slots);
-    const half = gun.barrel.slots / gun.barrel.chains;
-    b.barrel[half - 1] = m('ember_shot');
-    place(data, b, layoutOf(gun, b.barrel.length), half, m('ember_shot'));
-    expect(b.barrel[half - 1]).toEqual(m('ember_shot'));
-    expect(b.barrel[half]).toEqual(m('ember_shot'));
-  });
-
-  it('previewPlace shows the same result without changing the build', () => {
-    const b = barrel(['ember_shot', null, 'thunder_spark']);
+  it('previewPlace shows the result without changing the build', () => {
+    const b = barrel(['ember_shot']);
     const before = JSON.stringify(b);
-    const pv = previewPlace(data, b, plain(b), 1, m('ember_shot'));
+    const pv = previewPlace(data, b, plain(b), 0, m('ember_shot'));
     expect(JSON.stringify(b)).toBe(before);
-    expect(show(pv.build).slice(0, 3)).toEqual([null, 'plasma:3', null]);
+    expect(show(pv.build)[0]).toBe('ember_shot:2');
+  });
+
+  it('upgradesOwned: a card that could upgrade a module in the barrel', () => {
+    const b = barrel(['twin_shot', `ember_shot:${MAX}`]);
+    expect(upgradesOwned(data, b, 'twin_shot')).toBe(true);
+    expect(upgradesOwned(data, b, 'ember_shot')).toBe(false); // already maxed
+    expect(upgradesOwned(data, b, 'venom_shot')).toBe(false);
   });
 });
 
-describe('moveModule and helpers', () => {
-  it('dragging a module into an empty slot moves it', () => {
-    const b = barrel(['twin_shot']);
-    moveModule(data, b, plain(b), 0, 3);
-    expect(show(b).slice(0, 4)).toEqual([null, null, null, 'twin_shot:1']);
+describe('Mutation: two maxed elements become their hybrid', () => {
+  it('every pair of different elements has a hybrid; same elements and non-elements do not', () => {
+    expect(hybridOf(data, 'ember_shot', 'thunder_spark')).toBe('plasma');
+    expect(hybridOf(data, 'frost_shot', 'venom_shot')).toBe('frostbite');
+    expect(hybridOf(data, 'ember_shot', 'ember_shot')).toBeNull();
+    expect(hybridOf(data, 'ember_shot', 'twin_shot')).toBeNull();
   });
 
-  it('dragging onto a module swaps them, and matches brought together merge', () => {
-    const b = barrel(['ember_shot', 'twin_shot', 'ember_shot:2']);
-    moveModule(data, b, plain(b), 2, 1); // Fire 2 swaps with Twin, lands next to Fire 1
-    expect(show(b).slice(0, 3)).toEqual([null, 'ember_shot:3', 'twin_shot:1']);
+  it('both must be at the max tier', () => {
+    expect(canMutate(data, m('ember_shot', MAX), m('thunder_spark', MAX))).toBe(true);
+    expect(canMutate(data, m('ember_shot', MAX), m('thunder_spark', MAX - 1))).toBe(false);
+    expect(canMutate(data, m('plasma', MAX), m('venom_shot', MAX))).toBe(false); // hybrids are final
   });
 
-  it('fusesWithOwned: a card that would fuse with something in the barrel', () => {
-    const b = barrel(['plasma:3', 'twin_shot']);
-    expect(fusesWithOwned(data, b, 'ember_shot')).toBe(false); // elements never feed a hybrid
-    expect(fusesWithOwned(data, b, 'twin_shot')).toBe(true);
-    expect(fusesWithOwned(data, b, 'venom_shot')).toBe(false);
-    expect(fusesWithOwned(data, b, 'brace')).toBe(false);
+  it('dropped on one of the pair: the hybrid takes that slot, the other empties', () => {
+    const b = barrel([`ember_shot:${MAX}`, `thunder_spark:${MAX}`, 'twin_shot']);
+    const ev = mutate(data, b, plain(b), 0);
+    expect(ev[0]).toMatchObject({ kind: 'mutate', at: 0, from: 1, result: m('plasma', MAX) });
+    expect(show(b).slice(0, 3)).toEqual([`plasma:${MAX}`, null, 'twin_shot:1']);
   });
 
-  it('a 6-slot barrel can max every slot: feeding never needs a spare slot', () => {
-    const b = barrel([], 6);
-    const ids = ['ember_shot', 'twin_shot', 'heavy_slug', 'ricochet', 'split_shot', 'piercing_bore'];
-    ids.forEach((id, i) => (b.barrel[i] = m(id)));
-    for (let round = 0; round < 9; round++) ids.forEach((id, i) => place(data, b, plain(b), i, m(id)));
-    for (const s of b.barrel) expect(s!.tier).toBe(10);
+  it('with valid pairs on both sides it takes the preferred side', () => {
+    const b = barrel([`venom_shot:${MAX}`, `ember_shot:${MAX}`, `frost_shot:${MAX}`]);
+    expect(previewMutate(data, b, plain(b), 1, 'left')[0]).toMatchObject({ result: { id: 'brimstone' } });
+    expect(previewMutate(data, b, plain(b), 1, 'right')[0]).toMatchObject({ result: { id: 'steam' } });
+    expect(show(b)[1]).toBe(`ember_shot:${MAX}`); // previews change nothing
+  });
+
+  it('nothing to mutate: no events, nothing changes', () => {
+    const b = barrel([`ember_shot:${MAX}`, `thunder_spark:${MAX - 1}`]);
+    expect(mutate(data, b, plain(b), 0)).toEqual([]);
+    expect(mutationPairs(data, b, plain(b))).toEqual([]);
+  });
+
+  it('never across the Double Barrel gap', () => {
+    const gun = getById(data.guns, 'double_barrel', 'gun');
+    const b = createBuild(gun.barrel.slots);
+    const half = gun.barrel.slots / gun.barrel.chains;
+    b.barrel[half - 1] = m('ember_shot', MAX);
+    b.barrel[half] = m('thunder_spark', MAX);
+    expect(mutationPairs(data, b, layoutOf(gun, b.barrel.length))).toEqual([]);
+  });
+});
+
+describe('moving', () => {
+  it('into an empty slot it moves; onto a module they swap; nothing merges', () => {
+    const b = barrel(['ember_shot', 'twin_shot', 'ember_shot']);
+    moveModule(b, 0, 5);
+    expect(show(b)[5]).toBe('ember_shot:1');
+    moveModule(b, 5, 1); // swap with Twin, now next to the other Ember
+    expect(show(b).slice(0, 3)).toEqual([null, 'ember_shot:1', 'ember_shot:1']);
+    expect(show(b)[5]).toBe('twin_shot:1');
   });
 });

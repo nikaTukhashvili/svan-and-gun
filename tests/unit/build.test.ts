@@ -16,7 +16,8 @@ import {
   type BuildTarget,
   type Card,
 } from '../../src/systems/build';
-import { modDef } from '../../src/systems/fusion';
+import { modDef, mutationPairs } from '../../src/systems/fusion';
+import { layoutOf } from '../../src/systems/modPipeline';
 import { emptyBonuses } from '../../src/systems/stats';
 import { loadGameData } from '../helpers/loadData';
 
@@ -49,13 +50,14 @@ describe('card draw never offers an invalid card (property test over many seeds)
       const rng = new RNG(seed);
       const t = target(gun.barrel.slots);
       for (let level = 2; level <= 26; level++) {
-        const hand = drawCards(data, t.build, level, rng, t.support);
+        const hand = drawCards(data, t.build, level, rng, t.support, undefined, null, gun);
         expect(hand).toHaveLength(3);
         expect(new Set(hand.map(cardKey)).size).toBe(3); // distinct
         for (const c of hand)
-          expect(isCardValid(data, t.build, c, t.support), `seed ${seed} level ${level} ${cardKey(c)}`).toBe(
-            true,
-          );
+          expect(
+            isCardValid(data, t.build, c, t.support, gun),
+            `seed ${seed} level ${level} ${cardKey(c)}`,
+          ).toBe(true);
 
         // Pick one at random and put modules in a random open slot, like a player would.
         const card = rng.pick(hand);
@@ -65,7 +67,9 @@ describe('card draw never offers an invalid card (property test over many seeds)
             ? rng.int(0, open - 1)
             : card.type === 'muzzle'
               ? rng.int(0, t.build.muzzle.length - 1)
-              : undefined;
+              : card.type === 'mutation'
+                ? mutationPairs(data, t.build, layoutOf(gun, t.build.barrel.length))[0]![0]
+                : undefined;
         applyCard(data, gun, t, card, slot, open);
 
         for (const s of t.build.barrel) if (s) expect(s.tier).toBeGreaterThanOrEqual(1);
@@ -86,39 +90,57 @@ describe('module cards', () => {
     expect(ids).toContain('booster_right');
   });
 
-  it('a module that would fuse with one in the barrel weighs more and says so', () => {
+  it('a module that could upgrade one in the barrel weighs more and says so', () => {
     const build = createBuild();
     build.barrel[0] = { id: 'twin_shot', tier: 3 };
     const cards = candidateCards(data, build);
     const weight = (id: string) => cards.find(([c]) => c.type === 'module' && c.modId === id)!;
     const [twin, twinW] = weight('twin_shot');
     const [rico, ricoW] = weight('ricochet');
-    expect(twin.type === 'module' && twin.fuses).toBe(true);
-    expect(rico.type === 'module' && rico.fuses).toBe(false);
-    expect(twinW / ricoW).toBeCloseTo(data.cards.fusesWithOwnedMult);
+    expect(twin.type === 'module' && twin.upgrades).toBe(true);
+    expect(rico.type === 'module' && rico.upgrades).toBe(false);
+    expect(twinW / ricoW).toBeCloseTo(data.cards.upgradesOwnedMult);
   });
 
-  it('a module card needs a slot; placing it next to a match fuses', () => {
+  it('a module card needs a slot; dropped on the same module it upgrades it, next to it nothing merges', () => {
     const t = target();
     t.build.barrel[0] = { id: 'ember_shot', tier: 2 };
-    const card: Card = { type: 'module', modId: 'ember_shot', family: 'element', fuses: true };
+    const card: Card = { type: 'module', modId: 'ember_shot', family: 'element', upgrades: true };
     expect(() => applyCard(data, null, t, card)).toThrow();
-    const events = applyCard(data, null, t, card, 1);
-    expect(events.some((e) => e.kind === 'fuse')).toBe(true);
-    expect(t.build.barrel[1]).toEqual({ id: 'ember_shot', tier: 3 });
+    applyCard(data, null, t, card, 1);
+    expect(t.build.barrel.slice(0, 2)).toEqual([
+      { id: 'ember_shot', tier: 2 },
+      { id: 'ember_shot', tier: 1 },
+    ]);
+    const events = applyCard(data, null, t, card, 0);
+    expect(events[0]!.kind).toBe('upgrade');
+    expect(t.build.barrel[0]).toEqual({ id: 'ember_shot', tier: 3 });
   });
 
-  it('swapping can bring matches together, and they fuse', () => {
+  it('swapping never merges', () => {
     const build = createBuild();
     build.barrel[0] = { id: 'twin_shot', tier: 1 };
     build.barrel[1] = { id: 'ricochet', tier: 1 };
     build.barrel[2] = { id: 'twin_shot', tier: 1 };
-    swapSlots(data, null, build, 1, 2);
-    expect(build.barrel.slice(0, 3)).toEqual([
-      null,
-      { id: 'twin_shot', tier: 2 },
-      { id: 'ricochet', tier: 1 },
-    ]);
+    swapSlots(build, 1, 2);
+    expect(build.barrel.slice(0, 3).map((s) => s?.id)).toEqual(['twin_shot', 'twin_shot', 'ricochet']);
+  });
+
+  it('a Mutation is offered (Favor of the Gods) only when two maxed elements sit side by side', () => {
+    const max = data.config.slots.maxElementTier;
+    const t = target();
+    t.build.barrel[0] = { id: 'ember_shot', tier: max };
+    t.build.barrel[1] = { id: 'thunder_spark', tier: max - 1 };
+    const has = () => candidateCards(data, t.build).some(([c]) => c.type === 'mutation');
+    expect(has()).toBe(false);
+    t.build.barrel[1]!.tier = max;
+    expect(has()).toBe(true);
+    const card: Card = { type: 'mutation' };
+    expect(pathOf(data, card)).toBe('gods');
+    expect(isCardValid(data, t.build, card)).toBe(true);
+    applyCard(data, null, t, card, 1);
+    expect(t.build.barrel.slice(0, 2)).toEqual([null, { id: 'plasma', tier: max }]);
+    expect(isCardValid(data, t.build, card)).toBe(false);
   });
 });
 
@@ -182,7 +204,7 @@ describe('Tinker (random +1 tiers)', () => {
     expect(rollTinker(data, onlyFitting, new RNG(1))).toBeNull();
   });
 
-  it('adds its tiers to modules in the barrel, with no cap, and can hit the same one twice', () => {
+  it('adds its tiers to modules in the barrel and can hit the same one twice', () => {
     let sameTwice = false;
     for (let seed = 1; seed <= 200; seed++) {
       const t = target();
@@ -203,7 +225,7 @@ describe('Tinker (random +1 tiers)', () => {
     const t = target();
     t.build.barrel[0] = { id: 'ricochet', tier: 1 };
     const card: Card = { type: 'randomUpgrade', upgrades: [{ slot: 0, modId: 'ricochet' }] };
-    swapSlots(data, null, t.build, 0, 3);
+    swapSlots(t.build, 0, 3);
     applyCard(data, null, t, card);
     expect(t.build.barrel[3]).toEqual({ id: 'ricochet', tier: 2 });
   });
@@ -212,8 +234,8 @@ describe('Tinker (random +1 tiers)', () => {
 describe('level-up paths', () => {
   const pathTypes = (id: string) => data.cards.paths.find((p) => p.id === id)!.types as readonly string[];
 
-  it('Favor of the Gods offers elements and blessings; Gunsmith offers the rest', () => {
-    expect([...pathTypes('gods')].sort()).toEqual(['element', 'runStat']);
+  it('Favor of the Gods offers elements, Mutations and blessings; Gunsmith offers the rest', () => {
+    expect([...pathTypes('gods')].sort()).toEqual(['element', 'mutation', 'runStat']);
     expect(pathTypes('gunsmith')).toEqual(
       expect.arrayContaining(['grey', 'fitting', 'muzzle', 'supportPerk', 'coreTier', 'tinker']),
     );

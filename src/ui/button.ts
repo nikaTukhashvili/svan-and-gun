@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { UiColors } from '../config';
+import { sfxFor } from '../scenes/audio/Sfx';
 
 export interface ButtonOptions {
   width?: number;
@@ -37,7 +38,10 @@ export function createButton(
     text.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () =>
       text.setBackgroundColor('#1f232b').setColor(UiColors.text),
     );
-    text.on(Phaser.Input.Events.GAMEOBJECT_POINTER_UP, onClick);
+    text.on(Phaser.Input.Events.GAMEOBJECT_POINTER_UP, () => {
+      sfxFor(scene.game).play('click');
+      onClick();
+    });
   }
   return text;
 }

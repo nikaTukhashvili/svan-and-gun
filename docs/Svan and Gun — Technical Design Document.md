@@ -163,7 +163,7 @@ A trigger pull becomes bullets in three steps: the Core builds a base shot, barr
 
 Two pure modules in `src/systems`:
 
-- **`fusion.ts`**: the barrel rules. `fuseResult(a, b)` (tiers add; same module, element + element → hybrid; a hybrid grows only from the same hybrid), `place(build, layout, slot, module)` (place / fuse / replace, then cascade), `swapAndFuse`, `previewPlace` / `previewSwap` (the same logic on a copy, for the level-up preview), `tierParams(def, tier)` (base + perTier × (tier − 1), counts rounded), `neighbours(layout, i)` (same chain only).
+- **`fusion.ts`**: the barrel rules (revised 2026-11-21). Nothing merges by itself. `place(build, layout, slot, module, open)` upgrades the same module (`canUpgrade`, capped by `maxTier`: elements at `config.slots.maxElementTier`, grey uncapped), else places / inserts and shifts / replaces. `mutate(build, layout, slot, prefer)` turns two maxed, different neighbouring elements into their hybrid (`hybridOf`, `canMutate`, `mutationPair`, `mutationPairs`); hybrids are made at `hybridTier` and are final. `moveModule` only moves or swaps. `previewPlace` / `previewMutate` run the same logic on a copy. `tierParams(def, tier)` (base + perTier × (tier − 1), counts rounded), `neighbours(layout, i)` (same chain only).
 - **`modPipeline.ts`**: turns the barrel into behaviour.
 
 ```typescript

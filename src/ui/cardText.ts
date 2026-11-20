@@ -4,7 +4,7 @@
  */
 import type { CardPathDef, CardType, GameData, GunDef } from '../data/types';
 import type { Card, ModSlot } from '../systems/build';
-import { fuseResult, modDef, tierParams, type FusionEvent } from '../systems/fusion';
+import { hybridOf, maxTier, modDef, tierParams, type FusionEvent } from '../systems/fusion';
 import type { BarrelLayout } from '../systems/modPipeline';
 import {
   isUpside,
@@ -31,6 +31,7 @@ export const roman = (n: number): string => ROMAN[n] ?? String(n);
 const RARITY_COLORS = { common: 0x9aa0a6, rare: 0x3d8bfd, epic: 0xb455ff } as const;
 const CORE_COLOR = 0xe0533d;
 const SUPPORT_COLOR = 0x5fc46a;
+export const MUTATION_COLOR = 0xf2d23a;
 const FAMILY_LABEL = {
   element: 'ELEMENT',
   hybrid: 'HYBRID',
@@ -69,23 +70,34 @@ export function modDescription(data: GameData, id: string, tier = 1): string {
   return fillTemplate(def.description, tierParams(def, tier) as Record<string, number>);
 }
 
-/** "Ember Shot 3", or "Booster ▶" for fittings, or "empty". */
+/** "Ember Shot 3", "Ember Shot MAX", "Plasma" (hybrids are final), "Booster ▶", or "empty". */
 export function slotLabel(data: GameData, slot: ModSlot | null): string {
   if (!slot) return 'empty';
   const def = modDef(data, slot.id);
-  return def.family === 'fitting' ? def.name : `${def.name} ${slot.tier}`;
+  if (def.family === 'fitting' || def.family === 'hybrid') return def.name;
+  return `${def.name} ${slot.tier >= maxTier(data, slot.id) ? 'MAX' : slot.tier}`;
 }
 
-/** What fuses with this module card, for the card body. */
-function fusesWithText(data: GameData, modId: string): string {
+/** Tier text under a module on the level-up screen: "III", "V · MAX", "" for hybrids/fittings. */
+export function tierText(data: GameData, slot: ModSlot): string {
+  const def = modDef(data, slot.id);
+  if (def.family === 'fitting' || def.family === 'hybrid') return def.family === 'hybrid' ? 'HYBRID' : '';
+  return slot.tier >= maxTier(data, slot.id) ? `${roman(slot.tier)} · MAX` : roman(slot.tier);
+}
+
+/** How this module card grows, for the card body. */
+function growthText(data: GameData, modId: string): string {
   const def = modDef(data, modId);
-  if (def.family === 'fitting') return 'Never fuses. Place it next to the modules it should change.';
-  if (def.family === 'grey') return `Fuses with another ${def.name}.`;
+  if (def.family === 'fitting') return 'Never upgrades. Place it next to the modules it should change.';
+  if (def.family === 'grey') return `Drop it on another ${def.name} to upgrade it.`;
+  const max = roman(data.config.slots.maxElementTier);
   const hybrids = data.barrelMods
     .filter((m) => m.family === 'element' && m.id !== def.id)
-    .map((m) => fuseResult(data, { id: def.id, tier: 1 }, { id: m.id, tier: 1 }))
-    .flatMap((r) => (r ? [modName(data, r.id)] : []));
-  return `Fuses with ${def.name}; next to another element it becomes ${hybrids.join(' or ')}.`;
+    .flatMap((m) => {
+      const h = hybridOf(data, def.id, m.id);
+      return h ? [modName(data, h)] : [];
+    });
+  return `Drop it on another ${def.name} to upgrade it (max ${max}). At ${max}, a Mutation turns it and another maxed element into ${hybrids.join(', ')}.`;
 }
 
 const MUZZLE_LABEL: Record<MuzzleStatKey, (v: number) => string> = {
@@ -136,6 +148,17 @@ export function describeMuzzleEvent(data: GameData, ev: MuzzleEvent): string {
 
 export function describeCard(data: GameData, card: Card): CardText {
   switch (card.type) {
+    case 'mutation': {
+      const max = roman(data.config.slots.maxElementTier);
+      return {
+        label: 'MUTATION',
+        name: 'Mutation',
+        body:
+          `Drag onto two different elements side by side, both at tier ${max}: they become their hybrid ` +
+          '(Ember + Thunder = Plasma, Venom + Frost = Frostbite…) and a slot frees up.\n\nHybrids are final.',
+        color: MUTATION_COLOR,
+      };
+    }
     case 'muzzle': {
       const def = muzzleDef(data, card.muzzleId);
       const { up, down } = muzzleEffects(muzzleStats(def, 1));
@@ -151,9 +174,9 @@ export function describeCard(data: GameData, card: Card): CardText {
     case 'module': {
       const def = modDef(data, card.modId);
       return {
-        label: `NEW ${FAMILY_LABEL[def.family]}${card.fuses ? ' · CAN FUSE' : ''}`,
+        label: `NEW ${FAMILY_LABEL[def.family]}${card.upgrades ? ' · CAN UPGRADE' : ''}`,
         name: def.name,
-        body: `${modDescription(data, card.modId, 1)}\n\n${fusesWithText(data, card.modId)}`,
+        body: `${modDescription(data, card.modId, 1)}\n\n${growthText(data, card.modId)}`,
         color: hexColor(def.color),
       };
     }
@@ -214,6 +237,7 @@ export function pathContents(data: GameData, path: CardPathDef): string[] {
     supportPerk: () => `Magazine work: ${few(data.supportPerks.map((p) => p.name))}`,
     coreTier: () => 'Core Tier: more damage and fire rate',
     tinker: () => 'Tinker: random +1 tiers in your barrel',
+    mutation: () => 'Mutation: two maxed elements → their hybrid',
   };
   return path.types.map((t) => line[t]());
 }
@@ -227,9 +251,10 @@ export function describeEvents(data: GameData, events: readonly FusionEvent[]): 
     else if (ev.kind === 'move') parts.push('Move');
     else if (ev.kind === 'replace')
       parts.push(`Replace ${slotLabel(data, ev.old)} with ${slotLabel(data, ev.by)}`);
+    else if (ev.kind === 'upgrade') parts.push(`Upgrade → ${slotLabel(data, ev.result).toUpperCase()}`);
     else
       parts.push(
-        `${slotLabel(data, ev.a)} + ${slotLabel(data, ev.b)} → ${slotLabel(data, ev.result).toUpperCase()}`,
+        `Mutate ${slotLabel(data, ev.a)} + ${slotLabel(data, ev.b)} → ${slotLabel(data, ev.result).toUpperCase()}`,
       );
   }
   return parts.join('   ·   ');

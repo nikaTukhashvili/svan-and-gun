@@ -30,7 +30,8 @@
   "slots": {
     "barrelUnlockLevels": [1, 1, 1, 1, 4, 7, 10, 13],
     "maxTotalSlots": 12,
-    "maxCoreTier": 5
+    "maxCoreTier": 5,
+    "maxElementTier": 3
   },
   "enemies": {
     "hpScalePerMinute": 0.12,

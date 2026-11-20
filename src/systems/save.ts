@@ -22,6 +22,9 @@ const HighScoreSchema = z.strictObject({
 
 const SettingsSchema = z.strictObject({
   volume: z.number().min(0).max(1),
+  /** Background music, under the master volume. Defaults keep older saves valid. */
+  musicVolume: z.number().min(0).max(1).default(0.6),
+  musicMuted: z.boolean().default(false),
   autoFire: z.boolean(),
   screenShake: z.boolean(),
   fullscreen: z.boolean(),
@@ -51,7 +54,14 @@ export function freshSave(): SaveV1 {
     silver: 0,
     buffLevels: {},
     highScores: [],
-    settings: { volume: 0.7, autoFire: false, screenShake: true, fullscreen: false },
+    settings: {
+      volume: 0.7,
+      musicVolume: 0.6,
+      musicMuted: false,
+      autoFire: false,
+      screenShake: true,
+      fullscreen: false,
+    },
   };
 }
 

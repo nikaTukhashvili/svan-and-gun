@@ -57,7 +57,7 @@ test('settings are saved', async ({ page }) => {
   await waitForBoot(page);
   await clickGame(page, GAME_WIDTH / 2, 550); // Settings
   await page.waitForFunction(() => window.__svan!.activeScenes().includes('settings'));
-  await clickGame(page, GAME_WIDTH / 2, 320); // Auto-fire
+  await clickGame(page, GAME_WIDTH / 2, 415); // Auto-fire
   expect((await meta(page)).settings.autoFire).toBe(true);
   await page.reload();
   await waitForBoot(page);

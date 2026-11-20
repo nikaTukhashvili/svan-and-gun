@@ -23,7 +23,7 @@ import {
 import { BulletSystem, REDIRECTED, type Bullet } from '../systems/bullets';
 import { Destructibles, type Destructible } from '../systems/destructibles';
 import { applyOnFire, buildPipeline, HitResolver, layoutOf, type Pipeline } from '../systems/modPipeline';
-import { previewMove, previewPlace } from '../systems/fusion';
+import { previewMutate, previewPlace } from '../systems/fusion';
 import { moveMuzzle, previewMuzzle } from '../systems/muzzle';
 import { PickupSystem, rollCrateDrop, rollEnemyDrops, type Drop, type Pickup } from '../systems/pickups';
 import { Progression } from '../systems/progression';
@@ -47,13 +47,14 @@ import { PickupView } from './game/PickupView';
 import { Playground } from './game/Playground';
 import { ProjectileView } from './game/ProjectileView';
 import type { HudModel } from './HudScene';
-import type { LevelUpController } from './LevelUpScene';
+import { MUTATION_CHIP, type LevelUpController } from './LevelUpScene';
 import type { PauseController } from './PauseScene';
 import { EQUIPMENT_SLOTS, type BuildSheetData, type SheetLine } from './BuildSheetScene';
 import type { ResultsData } from './ResultsScene';
 import { getGameData } from './gameData';
 import { getSave } from './meta';
-import { Sfx } from './audio/Sfx';
+import { bindMusicKeys, startMusic } from './audio/Music';
+import { SFX_NAMES, sfxFor, type Sfx, type SfxName } from './audio/Sfx';
 import { DamageNumbers } from './game/DamageNumbers';
 import { metaBonuses } from '../systems/market';
 import { modName, muzzleLabel, roman, slotLabel, STAT_LABELS } from '../ui/cardText';
@@ -75,10 +76,10 @@ export interface PlaygroundOptions {
 
 const BULLET_RADIUS = 4;
 
-/** A tier-1 module card for a module id (Training Ground "fuse on place"). */
+/** A tier-1 module card for a module id (Training Ground "place like a card"). */
 function moduleCard(d: GameData, modId: string): Card {
   const def = d.barrelMods.find((m) => m.id === modId)!;
-  return { type: 'module', modId, family: def.family, fuses: false };
+  return { type: 'module', modId, family: def.family, upgrades: false };
 }
 const ENEMY_PROJECTILE_RADIUS = 6;
 const MAP_KEY = 'level1';
@@ -191,6 +192,8 @@ export class GameScene extends Phaser.Scene {
 
     this.bus = new EventBus<GameEvents>();
     this.rng = new RNG(this.run.seed);
+    startMusic(this); // already playing from the menu; starts it for runs opened directly
+    bindMusicKeys(this);
     this.meta =
       this.pgOptions && !this.pgOptions.marketBuffs
         ? emptyBonuses()
@@ -267,7 +270,7 @@ export class GameScene extends Phaser.Scene {
 
     this.bus.on('run:ended', ({ result }) => this.endRun(result));
     // Feedback: sounds and damage numbers (T35).
-    this.sfx = new Sfx(this.game);
+    this.sfx = sfxFor(this.game);
     this.numbers = new DamageNumbers(this);
     this.ringsSeen = 0;
     const heavy = this.gun.shotsPerSecond < 3;
@@ -276,13 +279,24 @@ export class GameScene extends Phaser.Scene {
     this.bus.on('weapon:reloaded', () => this.sfx.play('reloaded'));
     this.bus.on('enemy:damaged', ({ x, y, amount, crit, byStatus }) => {
       this.numbers.spawn(x, y, amount, crit, byStatus);
-      if (!byStatus) this.sfx.play('hit');
+      if (!byStatus) this.sfx.play(crit ? 'crit' : 'hit');
     });
     this.bus.on('enemy:killed', () => this.sfx.play('kill'));
     this.bus.on('player:damaged', () => this.sfx.play('hurt'));
     this.bus.on('player:levelUp', () => this.sfx.play('levelUp'));
-    this.bus.on('pickup:collected', () => this.sfx.play('pickup'));
+    const pickupSound = {
+      scrap: 'pickup',
+      silver: 'silver',
+      kubdari: 'heal',
+      horn: 'horn',
+      chest: 'chest',
+    } as const;
+    this.bus.on('pickup:collected', ({ kind }) =>
+      this.sfx.play(pickupSound[kind as keyof typeof pickupSound] ?? 'pickup'),
+    );
+    this.bus.on('boss:spawned', () => this.sfx.play('bossSpawn'));
     this.bus.on('boss:dead', () => this.sfx.play('bossDeath'));
+    this.bus.on('run:ended', ({ result }) => this.sfx.play(result === 'victory' ? 'victory' : 'defeat'));
     this.bus.on('player:damaged', ({ amount }) => {
       if (getSave(this).state.settings.screenShake)
         this.cameras.main.shake(120, Math.min(0.012, 0.002 + amount * 0.0003));
@@ -371,6 +385,7 @@ export class GameScene extends Phaser.Scene {
     this.projectileRequests.length = 0;
     this.enemies.update(dt, px, py, this.projectileRequests, this.playerRadius);
     for (const r of this.projectileRequests) this.projectiles.spawn(r);
+    if (this.projectileRequests.length > 0) this.sfx.play('enemyShot');
 
     // Gun and bullets
     this.shots.length = 0;
@@ -419,10 +434,14 @@ export class GameScene extends Phaser.Scene {
 
     // Statuses, explosions, pickups
     this.status.update(dt);
-    for (const bl of this.status.blasts) this.effects.flash(bl.x, bl.y, bl.radius, bl.color, 0.25);
+    for (const bl of this.status.blasts) {
+      this.effects.flash(bl.x, bl.y, bl.radius, bl.color, 0.25);
+      this.sfx.play(bl.kind);
+    }
     this.status.blasts.length = 0;
     this.resolver.update(dt);
     this.updateGrenades(dt);
+    if (this.resolver.arcs.length > 0) this.sfx.play('zap');
     this.effects.lightning(this.resolver.arcs);
     this.pickups.update(
       dt,
@@ -543,6 +562,7 @@ export class GameScene extends Phaser.Scene {
       const dy = aim.y - py;
       const d = Math.hypot(dx, dy) || 1;
       const reach = Math.min(d, u(mag.grenade.throwRange));
+      this.sfx.play('throw');
       this.grenades.push({
         x: px + (dx / d) * reach,
         y: py + (dy / d) * reach,
@@ -607,6 +627,7 @@ export class GameScene extends Phaser.Scene {
       this.run.support,
       undefined,
       path,
+      this.gun,
     );
   }
 
@@ -630,7 +651,7 @@ export class GameScene extends Phaser.Scene {
       },
       previewPlace: (slot, modId) =>
         previewPlace(d, this.run.build, this.layout(), slot, { id: modId, tier: 1 }, this.openSlots()).events,
-      previewMove: (a, b) => previewMove(d, this.run.build, this.layout(), a, b).events,
+      previewMutate: (slot, side) => previewMutate(d, this.run.build, this.layout(), slot, side),
       previewMuzzle: (slot, id) => previewMuzzle(this.run.build.muzzle, slot, id),
       moveMuzzle: (a, b) => {
         moveMuzzle(this.run.build.muzzle, a, b);
@@ -648,8 +669,8 @@ export class GameScene extends Phaser.Scene {
         this.run.rerollsUsed++;
         this.hand = this.drawHand();
       },
-      pick: (card, slot) => {
-        const events = applyCard(d, this.gun, this.run, card, slot, this.openSlots());
+      pick: (card, slot, side) => {
+        const events = applyCard(d, this.gun, this.run, card, slot, this.openSlots(), side);
         this.cardsPicked++;
         if (card.type === 'runStat') {
           this.run.picks.push({
@@ -669,7 +690,7 @@ export class GameScene extends Phaser.Scene {
             modId: result?.id ?? card.modId,
             slot,
             tier: result?.tier ?? 1,
-            fused: events.some((e) => e.kind === 'fuse'),
+            fused: events.some((e) => e.kind === 'upgrade'),
           });
         }
         if (this.progression.pending > 0) this.progression.consume();
@@ -679,7 +700,7 @@ export class GameScene extends Phaser.Scene {
         return events;
       },
       move: (a, b) => {
-        const events = swapSlots(d, this.gun, this.run.build, a, b);
+        const events = swapSlots(this.run.build, a, b);
         this.refreshStats();
         return events;
       },
@@ -742,8 +763,10 @@ export class GameScene extends Phaser.Scene {
       field.width,
       field.height,
     );
-    if (r.kind === 'elite') this.enemies.spawn(r.enemy, p.x, p.y, { minutes, elite: true, trait: r.trait });
-    else this.enemies.spawn(r.enemy, p.x, p.y, { minutes });
+    if (r.kind === 'elite') {
+      this.enemies.spawn(r.enemy, p.x, p.y, { minutes, elite: true, trait: r.trait });
+      this.sfx.play('elite');
+    } else this.enemies.spawn(r.enemy, p.x, p.y, { minutes });
   }
 
   /** A full circle of enemies around the player; points inside obstacles are skipped. */
@@ -1087,11 +1110,11 @@ export class GameScene extends Phaser.Scene {
       cards: () => [],
       rerollsLeft: () => 0,
       reroll: () => {},
-      pick: (card, slot) => changed(applyCard(d, this.gun, this.run, card, slot, all())),
-      move: (a, b) => changed(swapSlots(d, this.gun, this.run.build, a, b)),
+      pick: (card, slot, side) => changed(applyCard(d, this.gun, this.run, card, slot, all(), side)),
+      move: (a, b) => changed(swapSlots(this.run.build, a, b)),
       previewPlace: (slot, modId) =>
         previewPlace(d, this.run.build, this.layout(), slot, { id: modId, tier: 1 }, all()).events,
-      previewMove: (a, b) => previewMove(d, this.run.build, this.layout(), a, b).events,
+      previewMutate: (slot, side) => previewMutate(d, this.run.build, this.layout(), slot, side),
       previewMuzzle: (slot, id) => previewMuzzle(this.run.build.muzzle, slot, id),
       moveMuzzle: (a, b) => changed(moveMuzzle(this.run.build.muzzle, a, b)),
       hasMore: () => true,
@@ -1100,7 +1123,7 @@ export class GameScene extends Phaser.Scene {
         if (panelWasOpen) this.pg?.panel?.toggle();
         this.scene.resume();
       },
-      palette: () => [...d.barrelMods.map((m) => m.id), ...d.muzzles.pieces.map((m) => m.id)],
+      palette: () => [...d.barrelMods.map((m) => m.id), MUTATION_CHIP, ...d.muzzles.pieces.map((m) => m.id)],
       remove: (slot) => {
         this.run.build.barrel[slot] = null;
         changed(null);
@@ -1193,12 +1216,8 @@ export class GameScene extends Phaser.Scene {
         }),
       swap: (a, b, fuse) =>
         change(() => {
-          if (fuse) swapSlots(this.gd, this.gun, this.run.build, a, b);
-          else {
-            const t = this.run.build.barrel[a] ?? null;
-            this.run.build.barrel[a] = this.run.build.barrel[b] ?? null;
-            this.run.build.barrel[b] = t;
-          }
+          void fuse; // moving never merges
+          swapSlots(this.run.build, a, b);
         }),
       setMuzzle: (i, slot) =>
         change(() => {
@@ -1230,6 +1249,8 @@ export class GameScene extends Phaser.Scene {
       },
       respawnDummies: () => pg().helper.respawn(),
       openWorkbench: () => this.openWorkbench(),
+      soundNames: SFX_NAMES,
+      playSound: (name) => this.sfx.play(name as SfxName),
       clearEnemies: () => {
         for (const e of this.enemies.enemies) if (e.active && !e.immortal) this.enemies.release(e);
         this.projectiles.releaseAll();
