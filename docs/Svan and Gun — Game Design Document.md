@@ -164,8 +164,8 @@ The barrel is a row of slots. Each slot holds one **module**. Where a module sit
 
 | Family | Modules | Grows by |
 | --- | --- | --- |
-| Element (colour) | Ember Shot (fire, red), Venom Shot (poison, green), Thunder Spark (lightning, yellow), Frost Shot (frost, blue; added 2026-11-21) | Dropping the same element on it, up to tier V. Two different elements at V can be mutated into their hybrid |
-| Hybrid (mixed colour) | Plasma = fire + lightning (orange), Brimstone = fire + poison (amber), Blight Arc = poison + lightning (teal), Steam = fire + frost (pale), Frostbite = poison + frost (violet), Hailstorm = lightning + frost (ice blue) | Never: made at tier V by a Mutation, then final. Never offered as a card |
+| Element (colour) | Ember Shot (fire, red), Venom Shot (poison, green), Thunder Spark (lightning, yellow), Frost Shot (frost, blue; added 2026-11-21) | Dropping the same element on it, up to tier III. Two different elements at III can be mutated into their hybrid |
+| Hybrid (mixed colour) | Plasma = fire + lightning (orange), Brimstone = fire + poison (amber), Blight Arc = poison + lightning (teal), Steam = fire + frost (pale), Frostbite = poison + frost (violet), Hailstorm = lightning + frost (ice blue) | Never: made at tier III by a Mutation, then final. Never offered as a card |
 | Grey | Twin Shot, Ricochet, Long Rifling, Piercing Bore, Heavy Slug, Split Shot | Dropping the same module on it (no cap) |
 | Fitting (directional) | Booster ▶, ◀ Booster, ◀ Brace ▶, Overcharger, Siphon | Never |
 
@@ -173,9 +173,9 @@ The barrel is a row of slots. Each slot holds one **module**. Where a module sit
 
 - **Nothing merges by itself.** Two modules side by side stay two modules, even two Ember Shots, even Ember next to Thunder.
 - **Upgrade:** a module card dropped **onto** the same module raises it one tier (Ember I → Ember II). A new card is tier 1.
-- **Elements stop at tier V** (`config.slots.maxElementTier`). Grey modules have no cap. Fittings never upgrade.
-- **Mutation:** a **Favor of the Gods** card. Dragged onto two **different elements side by side, both at tier V**, they become their **hybrid** in one slot and the other slot empties. Over the right half of a slot it pairs with the right neighbour, over the left half with the left one. It is only offered when such a pair exists.
-- **Hybrids are final:** made at tier V, they never upgrade or mutate again (one mutation for now; more may come later).
+- **Elements stop at tier III** (`config.slots.maxElementTier`; lowered from V on 2026-11-21 because mutations came too late). Grey modules have no cap. Fittings never upgrade.
+- **Mutation:** a **Favor of the Gods** card. Dragged onto two **different elements side by side, both at tier III**, they become their **hybrid** in one slot and the other slot empties. Over the right half of a slot it pairs with the right neighbour, over the left half with the left one. It is only offered when such a pair exists.
+- **Hybrids are final:** made at tier III, they never upgrade or mutate again (one mutation for now; more may come later).
 - Numbers grow with tier by a formula per module: value = base + perTier × (tier − 1) (`barrelMods.json` > base, perTier). Counts (chains, bounces, shards, bullets, stacks) are rounded.
 
 **Placing and moving** (drag and drop)
@@ -196,7 +196,7 @@ The barrel is a row of slots. Each slot holds one **module**. Where a module sit
 | Overcharger | +100% | −50% |
 | Siphon | −40% | +80% |
 
-**Modules at tier 1** (numbers from `barrelMods.json`; on-hit effects follow the pellet rule; hybrids are made at tier V, so their "each extra tier" column is how they get there)
+**Modules at tier 1** (numbers from `barrelMods.json`; on-hit effects follow the pellet rule; hybrids are made at tier III, so their "each extra tier" column is how they get there)
 
 | Module | Tier 1 | Each extra tier |
 | --- | --- | --- |

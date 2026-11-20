@@ -238,3 +238,4 @@ _Add dated notes here as tasks complete (decisions, deviations, follow-ups)._
 - Mutation (new Favor of the Gods card, `typeWeights.mutation`): dragged onto two different elements at tier V side by side, they become their hybrid at tier V; offered only when such a pair exists. Hybrids are final.
 - Moving a module only moves or swaps it. `cards.fusesWithOwnedMult` → `upgradesOwnedMult`; module cards say CAN UPGRADE. Tinker only raises modules below their max.
 - Tests: `fusion.test.ts` rewritten; Mutation in `build.test.ts`; e2e upgrade-by-drop and Mutation drag.
+- Same day, after playtest: the element cap went from V to III (`maxElementTier: 3`); at V no mutation happened in a run. Hybrids are made at III.

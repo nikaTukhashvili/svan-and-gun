@@ -131,8 +131,8 @@ test('a Mutation dragged onto two maxed elements makes their hybrid', async ({ p
   await page.evaluate(() => {
     const run = window.__svan!.run!;
     const b = run.build();
-    b.barrel[0] = { id: 'ember_shot', tier: 5 };
-    b.barrel[1] = { id: 'thunder_spark', tier: 5 };
+    b.barrel[0] = { id: 'ember_shot', tier: 3 };
+    b.barrel[1] = { id: 'thunder_spark', tier: 3 };
     run.setBuild(b);
     run.queueHand([{ type: 'mutation' }]);
     run.grantScrap(5);
@@ -148,7 +148,7 @@ test('a Mutation dragged onto two maxed elements makes their hybrid', async ({ p
   await page.mouse.up();
   await levelUpClosed(page);
   const build: RunBuild = await page.evaluate(() => window.__svan!.run!.build());
-  expect(build.barrel.slice(0, 2)).toEqual([{ id: 'plasma', tier: 5 }, null]);
+  expect(build.barrel.slice(0, 2)).toEqual([{ id: 'plasma', tier: 3 }, null]);
   expect(errors).toEqual([]);
 });
 
@@ -327,7 +327,7 @@ for (const gunId of ['long_gun', 'double_barrel', 'scrap_smg'] as const) {
         { id: 'overcharger', tier: 1 },
         { id: 'thunder_spark', tier: 1 },
         { id: 'booster_right', tier: 1 },
-        { id: 'plasma', tier: 5 },
+        { id: 'plasma', tier: 3 },
         { id: 'twin_shot', tier: 2 },
         { id: 'brace', tier: 1 },
         { id: 'heavy_slug', tier: 1 },
