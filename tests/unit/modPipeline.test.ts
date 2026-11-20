@@ -6,7 +6,7 @@ import { RNG } from '../../src/core/rng';
 import { getById } from '../../src/data/registry';
 import { BulletSystem, REDIRECTED } from '../../src/systems/bullets';
 import { createBuild, type RunBuild, type SupportLevels } from '../../src/systems/build';
-import { EnemySystem } from '../../src/systems/enemies';
+import { EnemySystem, type Enemy } from '../../src/systems/enemies';
 import { applyOnFire, buildPipeline, HitResolver, type Pipeline } from '../../src/systems/modPipeline';
 import { ObstacleField } from '../../src/systems/obstacles';
 import { baseStats, computeStats, emptyBonuses } from '../../src/systems/stats';
@@ -396,5 +396,23 @@ describe('module order never changes what a hit does', () => {
     expect(a.frostbiteMult).toBe(1);
     w.status.applyPoison(a, 8, 6, 2, 3); // a later plain Venom poison gets no bonus
     expect(a.frostbiteMult).toBe(1);
+  });
+});
+
+describe('chain bursts', () => {
+  it('a packed crowd of burning, poisoned, Brimstone-marked enemies chain-bursts without looping', () => {
+    const w = world(buildWith([]));
+    const crowd: Enemy[] = [];
+    for (let i = 0; i < 40; i++) {
+      const e = w.enemies.spawn('kaji', 400 + (i % 8) * 12, 500 + Math.floor(i / 8) * 12, { minutes: 0 })!;
+      w.status.applyBurn(e, 3, 3, 5);
+      w.status.applyPoison(e, 8, 6, 0, 0);
+      w.status.markBlast(e, 9999, 200); // every burst kills every neighbour
+      crowd.push(e);
+    }
+    w.settle();
+    expect(() => w.enemies.kill(crowd[0]!)).not.toThrow();
+    expect(crowd.every((e) => !e.active)).toBe(true); // each died once
+    expect(w.status.blasts.length).toBe(40); // one burst per death, no repeats
   });
 });
