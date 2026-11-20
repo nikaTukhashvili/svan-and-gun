@@ -17,7 +17,9 @@ import {
   setSlot,
   startingSupport,
   swapSlots,
-  unlockedSlots,
+  allOpen,
+  openSlots,
+  slotUnlockLevels,
   type Card,
 } from '../systems/build';
 import { BulletSystem, REDIRECTED, type Bullet } from '../systems/bullets';
@@ -641,14 +643,11 @@ export class GameScene extends Phaser.Scene {
           : 'Chest: a free upgrade',
       queuedAfter: () => queued() - 1,
       build: () => this.run.build,
-      unlocked: () => unlockedSlots(d, this.progression.level, this.run.build.barrel.length),
+      unlocked: () => this.openSlots(),
       pipeline: () => this.pipeline,
       gun: () => this.gun,
       support: () => this.run.support,
-      unlockLevel: (i) => {
-        const levels = d.config.slots.barrelUnlockLevels;
-        return levels[i] ?? levels[levels.length - 1] ?? 1;
-      },
+      unlockLevel: (i) => slotUnlockLevels(d, this.layout())[i] ?? 1,
       previewPlace: (slot, modId) =>
         previewPlace(d, this.run.build, this.layout(), slot, { id: modId, tier: 1 }, this.openSlots()).events,
       previewMutate: (slot, side) => previewMutate(d, this.run.build, this.layout(), slot, side),
@@ -1089,7 +1088,7 @@ export class GameScene extends Phaser.Scene {
   private openWorkbench(): void {
     if (this.levelUpOpen || this.pauseOpen || this.ended) return;
     const d = this.gd;
-    const all = () => this.run.build.barrel.length;
+    const all = () => allOpen(this.run.build.barrel.length);
     const changed = <T>(value: T): T => {
       this.refreshStats();
       this.pg?.panel?.render();
@@ -1180,8 +1179,8 @@ export class GameScene extends Phaser.Scene {
     this.run.picks.push({ kind: 'perk', cardId, rarity, stat: def.stat, mode: def.mode, value });
   }
 
-  private openSlots(): number {
-    return unlockedSlots(this.gd, this.progression.level, this.run.build.barrel.length);
+  private openSlots(): boolean[] {
+    return openSlots(this.gd, this.layout(), this.progression.level);
   }
 
   private layout() {

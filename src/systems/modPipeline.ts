@@ -108,8 +108,6 @@ export interface Pipeline {
   support: SupportEffects;
   /** The muzzle's stats added up (for the UI). */
   muzzle: MuzzleTotals;
-  /** Strongest Brimstone burst in the barrel (px radius), or null. */
-  deathBlast: { damage: number; radius: number } | null;
 }
 
 const ON_FIRE = new Set(['twin_shot', 'long_rifling', 'piercing_bore', 'heavy_slug']);
@@ -195,13 +193,6 @@ export function buildPipeline(
   const weaponMods: WeaponMods = { ...NO_WEAPON_MODS, muzzle: muzzleWeaponMods(data, muzzle) };
   for (const m of barrel) if (m.id === 'heavy_slug') weaponMods.fireRateMult *= 1 - m.p.fireRatePenalty;
 
-  let deathBlast: Pipeline['deathBlast'] = null;
-  for (const m of barrel) {
-    if (m.id !== 'brimstone') continue;
-    const damage = m.p.blastDamage * m.k;
-    if (!deathBlast || damage > deathBlast.damage) deathBlast = { damage, radius: u(m.p.blastRadius) };
-  }
-
   const effects: SupportEffects = { grenade: null, shockReload: null, scavengerChance: 0 };
   for (const def of data.supportPerks) {
     const level = support[def.id] ?? 0;
@@ -228,7 +219,7 @@ export function buildPipeline(
         break;
     }
   }
-  return { layout, barrel, fittings, strength, weaponMods, support: effects, muzzle, deathBlast };
+  return { layout, barrel, fittings, strength, weaponMods, support: effects, muzzle };
 }
 
 /** Which chain a trigger pull uses: chains alternate shot by shot (Double Barrel). */
@@ -298,12 +289,18 @@ export class HitResolver implements HitHandler {
 
   onHit(b: Bullet, e: Enemy, firstOfVolley: boolean, x: number, y: number): void {
     if (!firstOfVolley) return;
+    const frozenBefore = e.frozenTime > 0;
+    let steam: SlotMod<Extract<TieredModDef, { id: 'steam' }>> | null = null;
     for (const m of this.pipeline().barrel) {
       if (ON_FIRE.has(m.id) || m.id === 'ricochet') continue;
       if (m.chain !== b.chain || (m.critOnly && !b.crit)) continue;
       if (m.id === 'split_shot' && b.generation > 0) continue; // children never split again
+      if (m.id === 'steam' && (!steam || m.p.blastDamage * m.k > steam.p.blastDamage * steam.k)) steam = m;
       this.effect(m, b, e, x, y);
     }
+    // Steam: an enemy this hit froze (by any module, in any order) bursts in steam.
+    if (steam && e.active && !frozenBefore && e.frozenTime > 0)
+      this.status.burst(e.x, e.y, u(steam.p.blastRadius), steam.p.blastDamage * steam.k, STEAM_COLOR, e);
   }
 
   onStop(b: Bullet, _e: Enemy, x: number, y: number): boolean {
@@ -334,7 +331,7 @@ export class HitResolver implements HitHandler {
   }
 
   update(_dt: number): void {
-    this.status.deathBlast = this.pipeline().deathBlast;
+    // Nothing per frame for now (Brimstone's burst is marked on the enemies it hits).
   }
 
   /** One on-hit effect. `e` may be dead (lightning and shards still go off). */
@@ -388,6 +385,9 @@ export class HitResolver implements HitHandler {
         if (e.active) {
           this.status.applyBurn(e, m.p.burnDps * k, m.p.burnSec, m.p.maxStacks);
           this.status.applyPoison(e, m.p.poisonDps * k, m.p.poisonSec, 0, 0, false);
+          // Only enemies Brimstone itself hit can burst: its chain, and a crit-chamber Brimstone
+          // only on crits (it only runs on crit bullets).
+          this.status.markBlast(e, m.p.blastDamage * k, u(m.p.blastRadius));
         }
         break;
       case 'frost_shot':
@@ -396,14 +396,12 @@ export class HitResolver implements HitHandler {
       case 'steam':
         if (e.active) {
           this.status.applyBurn(e, m.p.burnDps * k, m.p.burnSec, m.p.maxStacks);
-          if (this.status.applyChill(e, chillOf(m.p, k)))
-            this.status.burst(e.x, e.y, u(m.p.blastRadius), m.p.blastDamage * k, STEAM_COLOR, e);
+          this.status.applyChill(e, chillOf(m.p, k)); // the steam burst comes after all effects (onHit)
         }
         break;
       case 'frostbite':
         if (e.active) {
-          this.status.applyFrostbite(e, m.p.chilledPoisonMult);
-          this.status.applyPoison(e, m.p.poisonDps * k, m.p.poisonSec, 0, 0, false);
+          this.status.applyPoison(e, m.p.poisonDps * k, m.p.poisonSec, 0, 0, false, m.p.chilledPoisonMult);
           this.status.applyChill(e, chillOf(m.p, k));
         }
         break;

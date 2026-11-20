@@ -105,9 +105,10 @@ describe('placing: nothing merges by itself', () => {
     expect(show(b).slice(0, 4)).toEqual(['ember_shot:1', 'ricochet:1', 'twin_shot:1', null]);
   });
 
-  it('never slides into locked slots; a full chain replaces', () => {
+  it('never slides into or across locked slots; a full chain replaces', () => {
+    const open4 = [true, true, true, true, false, false, false, false];
     const b = barrel([null, 'ember_shot', 'twin_shot', 'ricochet']);
-    place(data, b, plain(b), 2, m('heavy_slug'), 4); // no gap to the right within 4 open slots
+    place(data, b, plain(b), 2, m('heavy_slug'), open4); // no open gap to the right
     expect(show(b).slice(0, 5)).toEqual(['ember_shot:1', 'twin_shot:1', 'heavy_slug:1', 'ricochet:1', null]);
     const full = barrel([
       'twin_shot',
@@ -121,6 +122,14 @@ describe('placing: nothing merges by itself', () => {
     ]);
     const ev = place(data, full, plain(full), 1, m('ricochet'));
     expect(ev[0]).toMatchObject({ kind: 'replace', at: 1, old: m('heavy_slug'), by: m('ricochet') });
+  });
+
+  it('a slide stops at a locked slot even if an open gap lies beyond it (SMG crit chamber)', () => {
+    const open = [true, true, true, false, false, false, true];
+    const b = barrel(['ember_shot', 'twin_shot', 'ricochet', null, null, null, null], 7);
+    const ev = place(data, b, plain(b), 1, m('heavy_slug'), open);
+    expect(ev[0]!.kind).toBe('replace'); // the only gaps are behind a locked slot: no room, it replaces
+    expect(show(b).slice(3, 6)).toEqual([null, null, null]); // nothing moved into the locked slots
   });
 
   it('previewPlace shows the result without changing the build', () => {

@@ -223,7 +223,6 @@ describe('hybrids', () => {
     const a = w.enemies.spawn('kaji', 400, 500, { minutes: 0 })!;
     const near = w.enemies.spawn('devi_brute', 430, 500, { minutes: 0 })!;
     w.settle();
-    w.resolver.update(DT); // syncs the burst from the pipeline
     w.bullets.spawn(shot({ damage: 1 }), 300, 500);
     w.step(20);
     expect(a.burnStacks).toBeGreaterThan(0);
@@ -322,5 +321,80 @@ describe('support perks (were magazine mods)', () => {
     weapon.update(DT, { fire: true, reload: false, aimAngle: 0 }, out);
     weapon.addRound();
     expect(weapon.ammo).toBe(5);
+  });
+});
+
+describe('module order never changes what a hit does', () => {
+  const hit = (barrel: string[], spawn = 'devi_brute') => {
+    const w = world(buildWith(barrel));
+    const a = w.enemies.spawn(spawn, 400, 500, { minutes: 0 })!;
+    w.settle();
+    w.bullets.spawn(shot({ damage: 1 }), 300, 500);
+    w.step(20);
+    return { w, a };
+  };
+
+  it('two burns merge: the stronger damage and cap win, whichever slot comes first', () => {
+    const one = hit(['plasma:3', 'ember_shot']).a;
+    const two = hit(['ember_shot', 'plasma:3']).a;
+    expect(one.burnDps).toBe(two.burnDps);
+    expect(one.burnMax).toBe(two.burnMax);
+    expect(one.burnStacks).toBe(two.burnStacks);
+  });
+
+  it('two poisons merge: a spreading Venom is not lost behind Brimstone', () => {
+    for (const order of [
+      ['brimstone', 'venom_shot'],
+      ['venom_shot', 'brimstone'],
+    ]) {
+      const { a } = hit(order);
+      expect(a.poisonCanSpread, order.join(' then ')).toBe(true);
+      expect(a.poisonDps).toBeGreaterThanOrEqual(9); // Brimstone's stronger poison
+    }
+  });
+
+  it('Steam bursts when the hit freezes the enemy, whichever module froze it', () => {
+    for (const order of [
+      ['frost_shot', 'steam'],
+      ['steam', 'frost_shot'],
+    ]) {
+      const w = world(buildWith(order));
+      const a = w.enemies.spawn('devi_brute', 400, 500, { minutes: 0 })!;
+      const near = w.enemies.spawn('devi_brute', 400, 540, { minutes: 0 })!;
+      w.settle();
+      a.chillStacks = 3; // the next hit's chill freezes it (Steam: 4 stacks, Frost: 5)
+      a.chillSlow = 0.1;
+      const hp = near.hp;
+      w.bullets.spawn(shot({ damage: 1 }), 300, 500);
+      w.step(20);
+      expect(a.frozenTime, order.join(' then ')).toBeGreaterThan(0);
+      expect(near.hp, order.join(' then ')).toBeLessThan(hp);
+    }
+  });
+
+  it('only enemies Brimstone itself hit burst on death', () => {
+    const w = world(buildWith(['brimstone']));
+    const a = w.enemies.spawn('kaji', 400, 500, { minutes: 0 })!;
+    const near = w.enemies.spawn('devi_brute', 430, 500, { minutes: 0 })!;
+    w.settle();
+    // Burning and poisoned, but never hit by Brimstone: no burst.
+    w.status.applyBurn(a, 3, 3, 5);
+    w.status.applyPoison(a, 8, 6, 0, 0);
+    const hp = near.hp;
+    w.enemies.kill(a);
+    expect(near.hp).toBe(hp);
+    expect(w.status.blasts).toHaveLength(0);
+  });
+
+  it("Frostbite's bonus ends with its poison", () => {
+    const w = world(buildWith([]));
+    const a = w.enemies.spawn('devi_brute', 400, 500, { minutes: 0 })!;
+    w.status.applyPoison(a, 9, 1, 0, 0, false, 2);
+    expect(a.frostbiteMult).toBe(2);
+    for (let i = 0; i < 4; i++) w.status.update(data.config.combat.statusTickSec);
+    expect(a.poisonTime).toBeLessThanOrEqual(0);
+    expect(a.frostbiteMult).toBe(1);
+    w.status.applyPoison(a, 8, 6, 2, 3); // a later plain Venom poison gets no bonus
+    expect(a.frostbiteMult).toBe(1);
   });
 });

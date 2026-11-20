@@ -23,7 +23,7 @@ import {
   type FusionEvent,
   type Side,
 } from './fusion';
-import { layoutOf } from './modPipeline';
+import { chainOfSlot, layoutOf, type BarrelLayout } from './modPipeline';
 import { placeMuzzle, type MuzzleSlot } from './muzzle';
 import { addBonus, type StatBonuses } from './stats';
 
@@ -82,15 +82,35 @@ export function startingSupport(gun: GunDef): SupportLevels {
 }
 
 /**
- * How many of `slotCount` barrel slots are open at this player level. Unlock levels come from
- * config.slots.barrelUnlockLevels; slots past the end of the list use its last entry.
+ * The player level each barrel slot opens at. config.slots.barrelUnlockLevels lists the levels in
+ * unlock ORDER (entries past its end use the last one). The order:
+ * - a crit chamber (the gun's twist) opens first, so the twist works from the start;
+ * - then the halves of a split barrel take turns (left 1, right 1, left 2, right 2, ...), so a
+ *   Double Barrel never fires every other shot through a fully locked half.
  */
-export function unlockedSlots(data: GameData, level: number, slotCount: number): number {
+export function slotUnlockLevels(data: GameData, layout: BarrelLayout): number[] {
   const levels = data.config.slots.barrelUnlockLevels;
-  let open = 0;
-  for (let i = 0; i < slotCount; i++) if (level >= (levels[i] ?? levels[levels.length - 1] ?? 1)) open++;
-  return open;
+  const at = (rank: number) => levels[rank] ?? levels[levels.length - 1] ?? 1;
+  const crit = layout.critChamberMult > 0 ? layout.slots - 1 : -1;
+  const out: number[] = [];
+  for (let i = 0; i < layout.slots; i++) {
+    if (i === crit) {
+      out.push(at(0));
+      continue;
+    }
+    const rank = (i % layout.slotsPerChain) * layout.chains + chainOfSlot(layout, i) + (crit >= 0 ? 1 : 0);
+    out.push(at(rank));
+  }
+  return out;
 }
+
+/** Which barrel slots are open at this player level. */
+export function openSlots(data: GameData, layout: BarrelLayout, level: number): boolean[] {
+  return slotUnlockLevels(data, layout).map((l) => level >= l);
+}
+
+/** Every slot open (Training Ground workbench, tests). */
+export const allOpen = (slots: number): boolean[] => Array.from({ length: slots }, () => true);
 
 /** The card's type for weights and paths (module cards by family). */
 export function cardType(card: Card): CardType {
@@ -184,8 +204,18 @@ export function rollTinker(data: GameData, build: RunBuild, rng: RNG): Card | nu
     if (s && s.tier < maxTier(data, s.id)) pool.push({ slot, modId: s.id });
   });
   if (pool.length === 0) return null;
+  // Track the tier each upgrade plans, so the card never promises more than a module's cap.
+  const planned = new Map<number, number>();
   const upgrades: { slot: number; modId: string }[] = [];
-  for (let i = 0; i < data.cards.randomUpgrade.upgrades; i++) upgrades.push(rng.pick(pool));
+  for (let i = 0; i < data.cards.randomUpgrade.upgrades; i++) {
+    const room = pool.filter(
+      (p) => (planned.get(p.slot) ?? build.barrel[p.slot]!.tier) < maxTier(data, p.modId),
+    );
+    if (room.length === 0) break;
+    const up = rng.pick(room);
+    planned.set(up.slot, (planned.get(up.slot) ?? build.barrel[up.slot]!.tier) + 1);
+    upgrades.push(up);
+  }
   return { type: 'randomUpgrade', upgrades };
 }
 
@@ -243,8 +273,8 @@ export function drawCards(
 }
 
 /**
- * Apply a picked card. A module card needs `slot` (an open barrel slot; `open` = how many slots
- * are unlocked, so an insert never shifts into a locked one). A muzzle card needs `slot` too: the
+ * Apply a picked card. A module card needs `slot` (an open barrel slot; `open` = which slots are
+ * unlocked, so an insert never shifts into a locked one). A muzzle card needs `slot` too: the
  * muzzle slot. A Mutation needs the barrel `slot` it was dropped on (`prefer`: which neighbour
  * when both would work). Returns what happened in the barrel step by step; empty for other cards.
  */
@@ -254,7 +284,7 @@ export function applyCard(
   target: BuildTarget,
   card: Card,
   slot?: number,
-  open?: number,
+  open?: readonly boolean[],
   prefer: Side = 'right',
 ): FusionEvent[] {
   const { build } = target;
@@ -322,14 +352,19 @@ export function isCardValid(
       return data.barrelMods.some((m) => m.id === card.modId && m.family !== 'hybrid');
     case 'muzzle':
       return data.muzzles.pieces.some((m) => m.id === card.muzzleId);
-    case 'randomUpgrade':
+    case 'randomUpgrade': {
+      const planned = new Map<number, number>();
       return (
         card.upgrades.length > 0 &&
         card.upgrades.every((u) => {
           const s = build.barrel[u.slot];
-          return s?.id === u.modId && s.tier < maxTier(data, s.id);
+          if (s?.id !== u.modId) return false;
+          const tier = planned.get(u.slot) ?? s.tier;
+          planned.set(u.slot, tier + 1);
+          return tier < maxTier(data, s.id);
         })
       );
+    }
     default:
       return candidateCards(data, build, support).some(
         ([c]) => cardKey(c) === cardKey(card) && JSON.stringify(c) === JSON.stringify(card),

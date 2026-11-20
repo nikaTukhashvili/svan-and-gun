@@ -12,7 +12,8 @@ import {
   pathOf,
   rollTinker,
   swapSlots,
-  unlockedSlots,
+  openSlots,
+  slotUnlockLevels,
   type BuildTarget,
   type Card,
 } from '../../src/systems/build';
@@ -29,17 +30,39 @@ const target = (slots = 8): BuildTarget => ({
 });
 
 describe('slot unlocks', () => {
-  it('opens slots by level from config.slots.barrelUnlockLevels', () => {
+  const layout = (id: string) => {
+    const gun = getById(data.guns, id, 'gun');
+    return layoutOf(gun, gun.barrel.slots);
+  };
+  const count = (open: boolean[]) => open.filter(Boolean).length;
+
+  it('opens slots by level from config.slots.barrelUnlockLevels; more levels never close one', () => {
     const levels = data.config.slots.barrelUnlockLevels;
-    expect(unlockedSlots(data, 1, 8)).toBe(levels.filter((l) => l <= 1).length);
-    expect(unlockedSlots(data, 99, 8)).toBe(8);
-    // More levels, never fewer slots.
-    let prev = 0;
-    for (let lv = 1; lv <= 20; lv++) {
-      const open = unlockedSlots(data, lv, 8);
-      expect(open).toBeGreaterThanOrEqual(prev);
+    const l = layout('long_gun');
+    expect(count(openSlots(data, l, 1))).toBe(levels.filter((x) => x <= 1).length);
+    expect(count(openSlots(data, l, 99))).toBe(8);
+    expect(openSlots(data, l, 1).slice(0, 4)).toEqual([true, true, true, true]); // one chain: left first
+    let prev = openSlots(data, l, 1);
+    for (let lv = 2; lv <= 20; lv++) {
+      const open = openSlots(data, l, lv);
+      prev.forEach((was, i) => was && expect(open[i]).toBe(true));
       prev = open;
     }
+  });
+
+  it('Double Barrel: the two halves take turns, so both have open slots from level 1', () => {
+    const l = layout('double_barrel');
+    const open = openSlots(data, l, 1);
+    const half = l.slotsPerChain;
+    expect(open.slice(0, half).some(Boolean)).toBe(true);
+    expect(open.slice(half).some(Boolean)).toBe(true);
+    expect(count(open.slice(0, half))).toBe(count(open.slice(half)));
+  });
+
+  it('Scrap SMG: the crit chamber (its twist) is open from level 1', () => {
+    const l = layout('scrap_smg');
+    expect(slotUnlockLevels(data, l)[l.slots - 1]).toBe(1);
+    expect(openSlots(data, l, 1)[l.slots - 1]).toBe(true);
   });
 });
 
@@ -61,10 +84,11 @@ describe('card draw never offers an invalid card (property test over many seeds)
 
         // Pick one at random and put modules in a random open slot, like a player would.
         const card = rng.pick(hand);
-        const open = unlockedSlots(data, level, t.build.barrel.length);
+        const open = openSlots(data, layoutOf(gun, t.build.barrel.length), level);
+        const openIdx = open.flatMap((o, i) => (o ? [i] : []));
         const slot =
           card.type === 'module'
-            ? rng.int(0, open - 1)
+            ? rng.pick(openIdx)
             : card.type === 'muzzle'
               ? rng.int(0, t.build.muzzle.length - 1)
               : card.type === 'mutation'
@@ -74,7 +98,7 @@ describe('card draw never offers an invalid card (property test over many seeds)
 
         for (const s of t.build.barrel) if (s) expect(s.tier).toBeGreaterThanOrEqual(1);
         // Nothing sits in a slot that is not unlocked yet.
-        t.build.barrel.slice(open).forEach((s) => expect(s).toBeNull());
+        t.build.barrel.forEach((s, i) => !open[i] && expect(s).toBeNull());
         expect(t.build.coreTier).toBeLessThanOrEqual(data.config.slots.maxCoreTier);
         for (const p of data.supportPerks) expect(t.support[p.id] ?? 0).toBeLessThanOrEqual(p.levels.length);
       }
@@ -259,5 +283,22 @@ describe('level-up paths', () => {
     const all = drawCards(data, t.build, 5, new RNG(1), t.support, 999);
     const types = new Set(all.map(cardType));
     for (const type of types) expect(data.cards.paths.some((p) => p.types.includes(type))).toBe(true);
+  });
+});
+
+describe('Tinker never promises more than a cap allows', () => {
+  it('a module one tier below its max is picked at most once', () => {
+    const max = data.config.slots.maxElementTier;
+    for (let seed = 1; seed <= 100; seed++) {
+      const t = target();
+      t.build.barrel[0] = { id: 'ember_shot', tier: max - 1 }; // the only module that can still upgrade
+      t.build.barrel[1] = { id: 'venom_shot', tier: max };
+      const card = rollTinker(data, t.build, new RNG(seed))!;
+      if (card.type !== 'randomUpgrade') throw new Error('expected Tinker');
+      expect(card.upgrades).toEqual([{ slot: 0, modId: 'ember_shot' }]);
+      expect(isCardValid(data, t.build, card)).toBe(true);
+      const twice: Card = { type: 'randomUpgrade', upgrades: [card.upgrades[0]!, card.upgrades[0]!] };
+      expect(isCardValid(data, t.build, twice)).toBe(false);
+    }
   });
 });

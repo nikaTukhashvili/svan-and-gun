@@ -39,8 +39,6 @@ const FREEZE_COLOR = 0x9fd8ff;
 export class StatusEffectSystem {
   private tickTimer = 0;
   private readonly scratch: Enemy[] = [];
-  /** Brimstone: an enemy that dies burning AND poisoned bursts (px radius). Set from the pipeline. */
-  deathBlast: { damage: number; radius: number } | null = null;
   /** Bursts and freezes since the scene last drained this list. */
   readonly blasts: Blast[] = [];
 
@@ -56,14 +54,23 @@ export class StatusEffectSystem {
     };
   }
 
-  /** Ember Shot: +1 burn stack (up to maxStacks), timer refreshed. */
+  /**
+   * +1 burn stack, timer refreshed. Burns from several modules MERGE: the highest damage per
+   * stack and the highest stack cap win, so the order of modules in the barrel never matters.
+   */
   applyBurn(e: Enemy, dps: number, durationSec: number, maxStacks: number): void {
-    e.burnStacks = Math.min(e.burnStacks + 1, maxStacks);
-    e.burnDps = dps;
-    e.burnTime = durationSec;
+    const burning = e.burnStacks > 0;
+    e.burnMax = burning ? Math.max(e.burnMax, maxStacks) : maxStacks;
+    e.burnDps = burning ? Math.max(e.burnDps, dps) : dps;
+    e.burnStacks = Math.min(e.burnStacks + 1, e.burnMax);
+    e.burnTime = burning ? Math.max(e.burnTime, durationSec) : durationSec;
   }
 
-  /** Venom Shot: does not stack; a new hit only refreshes the timer. */
+  /**
+   * Poison does not stack. A new poison on a poisoned enemy MERGES: the timer refreshes and the
+   * stronger numbers win (damage, duration, spreading, Frostbite's multiplier), so the order of
+   * modules never matters. `frostbiteMult`: Frostbite's bonus while chilled; it ends with the poison.
+   */
   applyPoison(
     e: Enemy,
     dps: number,
@@ -71,11 +78,21 @@ export class StatusEffectSystem {
     spreadTargets: number,
     spreadRadius: number,
     canSpread = true,
+    frostbiteMult = 1,
   ): void {
     if (e.poisonTime > 0) {
       e.poisonTime = Math.max(e.poisonTime, durationSec);
+      e.poisonDps = Math.max(e.poisonDps, dps);
+      e.poisonDuration = Math.max(e.poisonDuration, durationSec);
+      e.frostbiteMult = Math.max(e.frostbiteMult, frostbiteMult);
+      if (canSpread && spreadTargets > (e.poisonCanSpread ? e.poisonSpreadTargets : 0)) {
+        e.poisonCanSpread = true;
+        e.poisonSpreadTargets = spreadTargets;
+        e.poisonSpreadRadius = spreadRadius;
+      }
       return;
     }
+    e.frostbiteMult = frostbiteMult;
     e.poisonTime = durationSec;
     e.poisonDps = dps;
     e.poisonDuration = durationSec;
@@ -104,9 +121,12 @@ export class StatusEffectSystem {
     return true;
   }
 
-  /** Frostbite: poison hurts more while the enemy is chilled or frozen. */
-  applyFrostbite(e: Enemy, mult: number): void {
-    e.frostbiteMult = Math.max(e.frostbiteMult, mult);
+  /** Brimstone hit it: if it dies burning and poisoned, it bursts (the strongest Brimstone wins). */
+  markBlast(e: Enemy, damage: number, radius: number): void {
+    if (damage > e.blastDamage) {
+      e.blastDamage = damage;
+      e.blastRadius = radius;
+    }
   }
 
   /** Area burst around a point (ignores defence): Brimstone on death, Steam on freeze. */
@@ -166,16 +186,16 @@ export class StatusEffectSystem {
         const chilled = e.chillStacks > 0 || e.frozenTime > 0;
         damage += e.poisonDps * Math.min(t, e.poisonTime) * (chilled ? e.frostbiteMult : 1);
         e.poisonTime -= t;
+        if (e.poisonTime <= 0) e.frostbiteMult = 1; // Frostbite's bonus ends with its poison
       }
       if (damage > 0) this.enemies.damage(e, damage, true, true);
     }
   }
 
-  /** Brimstone: a burning, poisoned enemy bursts on death (damage ignores defence). */
+  /** Brimstone: an enemy it hit that dies burning and poisoned bursts (damage ignores defence). */
   private blast(dead: Enemy): void {
-    const b = this.deathBlast;
-    if (!b || dead.burnStacks <= 0 || dead.poisonTime <= 0) return;
-    this.burst(dead.x, dead.y, b.radius, b.damage, BRIMSTONE_COLOR, dead);
+    if (dead.blastDamage <= 0 || dead.burnStacks <= 0 || dead.poisonTime <= 0) return;
+    this.burst(dead.x, dead.y, dead.blastRadius, dead.blastDamage, BRIMSTONE_COLOR, dead);
   }
 
   /** A poisoned enemy dies: the poison jumps once to the nearest enemies, and stops there. */
