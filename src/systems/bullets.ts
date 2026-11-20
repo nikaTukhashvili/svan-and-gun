@@ -25,6 +25,8 @@ export interface Bullet {
   generation: number;
   /** First barrel slot whose on-hit mods apply to this bullet (children only get later slots). */
   fromSlot: number;
+  /** Barrel chain whose mods apply (Double Barrel has two). */
+  chain: number;
   /** Ricochet bounces left; -1 = ricochet has not triggered for this bullet yet. */
   bouncesLeft: number;
   /** Ids of enemies already hit, so a piercing bullet hits each once. */
@@ -72,6 +74,7 @@ export class BulletSystem {
         volleyId: 0,
         generation: 0,
         fromSlot: 0,
+        chain: 0,
         bouncesLeft: -1,
         hitIds: new Set(),
       });
@@ -102,6 +105,7 @@ export class BulletSystem {
     b.volleyId = spec.volleyId;
     b.generation = generation;
     b.fromSlot = fromSlot;
+    b.chain = spec.chain ?? 0;
     b.bouncesLeft = -1;
     b.hitIds.clear();
     this.active++;

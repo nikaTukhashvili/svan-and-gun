@@ -148,7 +148,16 @@ The Core itself can be improved during a run with **Core Tier** upgrades (Tier I
 
 **Pellet rule.** All pellets from one trigger pull are one volley. On-hit mods (elements, Ricochet, Split Shot) trigger at most once per enemy per volley, on the first pellet that hits it. The other pellets deal damage only. This stops the Double Barrel from applying effects 6× as often as the other guns, with no hidden chance rolls.
 
-### Barrel: 4 slots
+### Barrel: length and twist depend on the gun
+
+Every gun uses the same mods and rules, but its barrel is shaped differently (`guns.json` > barrel). No gun has more than 12 slots in total.
+
+| Gun | Barrel | Magazine | Twist |
+| --- | --- | --- | --- |
+| Long Gun | 6 | 2 | **Muzzle:** the last barrel slot works ×2 |
+| Double Barrel | 6, as two chains of 3 | 2 | **Two barrels:** trigger pulls alternate between the left and right chain |
+| Scrap SMG | 3 + crit chamber | 3 | **Crit chamber:** the last slot works only on crit bullets (every 10th), ×3 |
+
 
 - All 4 slots are open from the start of a run. Locking slots behind levels forced the barrel order on the player; with every slot open, the order is a plan the player builds and then upgrades.
 - Any barrel mod fits any slot, but each mod can sit in only one slot: never two of the same mod. Mods apply in slot order, 1 to 4, and **a bullet created by a mod only carries the mods in later slots**. So order matters:
@@ -173,6 +182,12 @@ Phase 1 has three elements: Fire, Poison and Lightning. Each is a barrel mod. Th
 | Piercing Bore | Bullet passes through +1 enemy | +1 pierce |
 | Heavy Slug | Damage +40%, fire rate −15%, more knockback | +15% damage |
 | Split Shot | On hit, splits into 3 shards at 30% damage | +1 shard |
+| Amplifier (operator) | The mod to its right works ×2 | ×2.5, ×3 |
+| Hammer Spring (operator) | The mod to its right works only on every 4th shot, ×3 | every 3rd, then ×4 |
+| Death Trigger (operator) | The mod to its right triggers only when the hit kills, ×3 | ×4, ×5 |
+| Echo Chamber (operator) | The mod to its right triggers again 0.5 s later at ×0.5 | ×0.75, then ×1 after 0.4 s |
+
+**Operators** change only the slot directly to their right, inside the same chain. Next to an empty slot, another operator, or the end of a chain they do nothing, so operators never stack. Example: `Fire | Amplifier | Lightning`: the target burns normally and lightning chains to 4 enemies instead of 2. Death Trigger never affects onFire mods (Twin Shot, Long Rifling, Piercing Bore, Heavy Slug), because a shot has not killed anything yet when it fires.
 
 ### Magazine: 2 slots
 

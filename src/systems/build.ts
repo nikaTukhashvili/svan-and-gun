@@ -10,7 +10,7 @@
  * - run stat cards are always valid and fill the hand if fewer than 3 cards are valid.
  */
 import type { RNG } from '../core/rng';
-import type { GameData, Rarity, StatId, StatMode } from '../data/types';
+import type { GameData, GunDef, Rarity, StatId, StatMode } from '../data/types';
 import { addBonus, type StatBonuses } from './stats';
 
 export type SlotKind = 'barrel' | 'magazine';
@@ -34,15 +34,34 @@ export type Card =
   /** Tinker: random level-ups for owned mods, chosen when the card is drawn (a surprise for the player). */
   | { type: 'randomUpgrade'; upgrades: { kind: SlotKind; modId: string }[] };
 
-export function createBuild(): RunBuild {
-  return { barrel: [null, null, null, null], magazine: [null, null], coreTier: 1 };
+/** Slot counts for a build: each gun has its own barrel length (guns.json > barrel). */
+export interface SlotLayout {
+  barrel: number;
+  magazine: number;
 }
 
-/** How many slots of a kind are open at this player level. */
-export function unlockedSlots(data: GameData, kind: SlotKind, level: number): number {
+export function createBuild(layout: SlotLayout = { barrel: 4, magazine: 2 }): RunBuild {
+  return {
+    barrel: Array.from({ length: layout.barrel }, () => null),
+    magazine: Array.from({ length: layout.magazine }, () => null),
+    coreTier: 1,
+  };
+}
+
+export function buildForGun(gun: GunDef): RunBuild {
+  return createBuild({ barrel: gun.barrel.slots, magazine: gun.magazineSlots });
+}
+
+/**
+ * How many slots of `slotCount` are open at this player level. Unlock levels come from
+ * config.slots; slots past the end of the list use its last entry (all 1 by default).
+ */
+export function unlockedSlots(data: GameData, kind: SlotKind, level: number, slotCount: number): number {
   const levels =
     kind === 'barrel' ? data.config.slots.barrelUnlockLevels : data.config.slots.magazineUnlockLevels;
-  return levels.filter((l) => level >= l).length;
+  let open = 0;
+  for (let i = 0; i < slotCount; i++) if (level >= (levels[i] ?? levels[levels.length - 1] ?? 1)) open++;
+  return open;
 }
 
 const slotsOf = (build: RunBuild, kind: SlotKind) => (kind === 'barrel' ? build.barrel : build.magazine);
@@ -79,7 +98,7 @@ export function candidateCards(data: GameData, build: RunBuild, level: number): 
 
   for (const kind of ['barrel', 'magazine'] as const) {
     const slots = slotsOf(build, kind);
-    const open = unlockedSlots(data, kind, level);
+    const open = unlockedSlots(data, kind, level, slots.length);
     if (open === 0) continue;
     const hasFree = slots.slice(0, open).some((s) => s === null);
     const defs = kind === 'barrel' ? data.barrelMods : data.magazineMods;

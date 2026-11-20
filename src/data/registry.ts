@@ -123,6 +123,14 @@ function crossCheck(d: Parsed & { maps: Record<string, MapDef> }): string[] {
     p.push('config.json > slots.barrelUnlockLevels: slot 1 must unlock at level 1');
   if (!ascending(barrelUnlockLevels)) p.push('config.json > slots.barrelUnlockLevels: must be ascending');
   if (!ascending(magazineUnlockLevels)) p.push('config.json > slots.magazineUnlockLevels: must be ascending');
+  for (const g of d.guns) {
+    const where = 'guns.json > ' + g.id + ' > barrel';
+    if (g.barrel.slots % g.barrel.chains !== 0) p.push(where + ': slots must split evenly into chains');
+    if (g.barrel.slots + g.magazineSlots > d.config.slots.maxTotalSlots)
+      p.push(where + ': barrel + magazine slots exceed config.slots.maxTotalSlots');
+    if (g.barrel.critChamberMult > 0 && g.critEveryN === 0)
+      p.push(where + ': a crit chamber needs a gun with crits (critEveryN > 0)');
+  }
 
   // Mods: one entry per level, description placeholders exist in every level.
   for (const [file, mods] of [

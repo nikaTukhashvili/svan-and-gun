@@ -18,8 +18,8 @@ const data = loadGameData();
 
 describe('slot unlocks', () => {
   it('all 4 barrel slots and both magazine slots are open from level 1', () => {
-    expect([1, 5, 20].map((l) => unlockedSlots(data, 'barrel', l))).toEqual([4, 4, 4]);
-    expect([1, 5, 20].map((l) => unlockedSlots(data, 'magazine', l))).toEqual([2, 2, 2]);
+    expect([1, 5, 20].map((l) => unlockedSlots(data, 'barrel', l, 4))).toEqual([4, 4, 4]);
+    expect([1, 5, 20].map((l) => unlockedSlots(data, 'magazine', l, 2))).toEqual([2, 2, 2]);
   });
 });
 
@@ -40,7 +40,7 @@ describe('card draw never offers an invalid card (property test over many seeds)
         const card = rng.pick(hand);
         const replaceSlot =
           card.type === 'newMod' && card.replace
-            ? rng.int(0, unlockedSlots(data, card.kind, level) - 1)
+            ? rng.int(0, unlockedSlots(data, card.kind, level, build[card.kind].length) - 1)
             : undefined;
         applyCard(build, bonuses, card, replaceSlot);
 
@@ -49,7 +49,9 @@ describe('card draw never offers an invalid card (property test over many seeds)
           expect(new Set(ids).size).toBe(ids.length); // never the same mod twice
           for (const s of build[kind]) if (s) expect(s.level).toBeLessThanOrEqual(3);
           // Nothing sits in a slot that is not unlocked yet.
-          build[kind].slice(unlockedSlots(data, kind, level)).forEach((s) => expect(s).toBeNull());
+          build[kind]
+            .slice(unlockedSlots(data, kind, level, build[kind].length))
+            .forEach((s) => expect(s).toBeNull());
         }
         expect(build.coreTier).toBeLessThanOrEqual(5);
       }

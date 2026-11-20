@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH, SceneKeys, UiColors } from '../config';
-import type { GameData } from '../data/types';
+import type { GameData, GunDef } from '../data/types';
 import type { Card, RunBuild, SlotKind } from '../systems/build';
+import { isOperator, type Pipeline } from '../systems/modPipeline';
 import { describeCard, modDescription, roman, slotLabel } from '../ui/cardText';
 import { createButton } from '../ui/button';
 import { getGameData } from './gameData';
@@ -14,6 +15,9 @@ export interface LevelUpController {
   build(): Readonly<RunBuild>;
   unlocked(kind: SlotKind): number;
   unlockLevel(kind: SlotKind, slot: number): number;
+  /** Barrel layout and operator targets for the slot view. */
+  pipeline(): Pipeline;
+  gun(): GunDef;
   cards(): Card[];
   rerollsLeft(): number;
   reroll(): void;
@@ -130,60 +134,87 @@ export class LevelUpScene extends Phaser.Scene {
     ]);
   }
 
-  /** Barrel (4), magazine (2) and Core Tier. Barrel slots swap on click; replace mode picks a slot. */
+  /**
+   * The gun's slots: barrel (length and chains depend on the gun), magazine and Core Tier.
+   * Barrel slots swap on click; replace mode picks a slot. Tags show the gun's twist (muzzle,
+   * crit chamber, left/right barrel) and arrows show what each operator changes.
+   */
   private drawSlots(y: number): void {
     const build = this.ctl.build();
+    const pipeline = this.ctl.pipeline();
+    const layout = pipeline.layout;
     const replacing = this.pendingReplace?.type === 'newMod' ? this.pendingReplace.kind : null;
-    const boxW = 150;
-    const gap = 10;
-    const startX = 150;
+    const gap = 8;
+    const groupGap = 26;
+    const groups = layout.chains + 1; // barrel chains + magazine
+    const total = build.barrel.length + build.magazine.length;
+    const boxW = Math.min(
+      140,
+      Math.floor((GAME_WIDTH - 200 - (total - groups) * gap - (groups - 1) * groupGap) / total),
+    );
+    let x = 40;
+
     this.root.add(
-      this.text(
-        40,
-        y - 52,
-        'BARREL (applies left to right)  ·  click two slots to swap',
-        13,
-        UiColors.textDim,
-      ),
+      this.text(40, y - 62, 'BARREL (left → right)  ·  click two slots to swap', 13, UiColors.textDim),
     );
 
-    const drawRow = (kind: SlotKind, x0: number) => {
+    const box = (kind: SlotKind, i: number, tag: string | null) => {
       const slots = kind === 'barrel' ? build.barrel : build.magazine;
+      const slot = slots[i] ?? null;
       const open = this.ctl.unlocked(kind);
-      slots.forEach((slot, i) => {
-        const x = x0 + i * (boxW + gap) + boxW / 2;
-        const locked = i >= open;
-        const selectable =
-          replacing === kind ? !locked && slot !== null : kind === 'barrel' && !locked && slot !== null;
-        const selected = kind === 'barrel' && this.swapFrom === i;
-        const box = this.add
-          .rectangle(x, y, boxW, 64, locked ? 0x15181d : 0x1f232b)
-          .setStrokeStyle(2, selected ? 0xf2b632 : replacing === kind && selectable ? 0xe0533d : 0x3a404b);
-        const label = locked ? `Lv ${this.ctl.unlockLevel(kind, i)}` : slotLabel(this.gd, kind, slot);
-        const txt = this.text(x, y, label, 14, locked ? '#5b6270' : slot ? UiColors.text : UiColors.textDim)
-          .setOrigin(0.5)
-          .setWordWrapWidth(boxW - 12)
-          .setAlign('center');
-        if (selectable) {
-          box.setInteractive({ useHandCursor: true });
-          box.on(Phaser.Input.Events.GAMEOBJECT_POINTER_UP, () => this.clickSlot(kind, i));
-          if (slot) {
-            const tip = modDescription(this.gd, kind, slot.id, slot.level);
-            box.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.showTip(tip));
-            box.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => this.showTip(''));
-          }
+      const locked = i >= open;
+      const cx = x + boxW / 2;
+      const selectable =
+        replacing === kind ? !locked && slot !== null : kind === 'barrel' && !locked && slot !== null;
+      const selected = kind === 'barrel' && this.swapFrom === i;
+      const rect = this.add
+        .rectangle(cx, y, boxW, 64, locked ? 0x15181d : 0x1f232b)
+        .setStrokeStyle(2, selected ? 0xf2b632 : replacing === kind && selectable ? 0xe0533d : 0x3a404b);
+      let label = locked ? `Lv ${this.ctl.unlockLevel(kind, i)}` : slotLabel(this.gd, kind, slot);
+      if (kind === 'barrel' && slot && isOperator(slot.id)) {
+        const op = pipeline.operators.find((o) => o.slot === i);
+        label += op?.target !== null && op?.target !== undefined ? '  →' : '\n(no target)';
+      }
+      const txt = this.text(
+        cx,
+        y,
+        label,
+        boxW < 120 ? 12 : 13,
+        locked ? '#5b6270' : slot ? UiColors.text : UiColors.textDim,
+      )
+        .setOrigin(0.5)
+        .setWordWrapWidth(boxW - 10)
+        .setAlign('center');
+      this.root.add([rect, txt]);
+      if (tag) this.root.add(this.text(cx, y - 44, tag, 11, UiColors.accent, 'bold').setOrigin(0.5));
+      if (selectable) {
+        rect.setInteractive({ useHandCursor: true });
+        rect.on(Phaser.Input.Events.GAMEOBJECT_POINTER_UP, () => this.clickSlot(kind, i));
+        if (slot) {
+          const tip = modDescription(this.gd, kind, slot.id, slot.level);
+          rect.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.showTip(tip));
+          rect.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => this.showTip(''));
         }
-        this.root.add([box, txt]);
-      });
+      }
+      x += boxW + gap;
     };
 
-    drawRow('barrel', startX);
-    const magX = startX + 4 * (boxW + gap) + 40;
-    this.root.add(this.text(magX, y - 52, 'MAGAZINE', 13, UiColors.textDim));
-    drawRow('magazine', magX);
-    const coreX = magX + 2 * (boxW + gap) + 30;
-    this.root.add(this.text(coreX, y - 52, 'CORE', 13, UiColors.textDim));
-    this.root.add(this.text(coreX, y - 10, `Tier ${roman(build.coreTier)}`, 20, UiColors.text, 'bold'));
+    build.barrel.forEach((_, i) => {
+      const last = i === layout.slots - 1;
+      let tag: string | null = null;
+      if (layout.chains > 1 && i % layout.slotsPerChain === 0) tag = i === 0 ? 'LEFT BARREL' : 'RIGHT BARREL';
+      if (last && layout.muzzleBoost > 1) tag = `MUZZLE ×${layout.muzzleBoost}`;
+      if (last && layout.critChamberMult > 0) tag = `CRIT CHAMBER ×${layout.critChamberMult}`;
+      box('barrel', i, tag);
+      const endOfChain = (i + 1) % layout.slotsPerChain === 0 && i + 1 < layout.slots;
+      if (endOfChain) x += groupGap - gap;
+    });
+    x += groupGap - gap;
+    this.root.add(this.text(x, y - 62, 'MAGAZINE', 13, UiColors.textDim));
+    build.magazine.forEach((_, i) => box('magazine', i, null));
+    x += groupGap - gap;
+    this.root.add(this.text(x, y - 62, 'CORE', 13, UiColors.textDim));
+    this.root.add(this.text(x, y - 10, `Tier ${roman(build.coreTier)}`, 18, UiColors.text, 'bold'));
     this.tip = this.text(GAME_WIDTH / 2, y + 56, '', 15, UiColors.textDim).setOrigin(0.5);
     this.root.add(this.tip);
   }

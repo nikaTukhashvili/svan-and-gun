@@ -24,6 +24,8 @@ export interface ShotSpec {
   crit: boolean;
   /** Same for every pellet of one trigger pull (the pellet rule, TDD: ModPipeline). */
   volleyId: number;
+  /** Barrel chain this shot uses (Double Barrel alternates); set by applyOnFire. */
+  chain?: number;
 }
 
 /** Effective gun numbers after player stats and Core Tier. Distances in pixels. */

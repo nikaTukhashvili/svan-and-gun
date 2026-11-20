@@ -27,13 +27,14 @@ describe('game data files', () => {
   it('matches the GDD Phase 1 scope', () => {
     const d = loadGameData();
     expect(d.guns.map((g) => g.id)).toEqual(['long_gun', 'double_barrel', 'scrap_smg']);
-    expect(d.barrelMods).toHaveLength(9);
+    expect(d.barrelMods).toHaveLength(13); // 9 mods + 4 operators
     expect(d.magazineMods).toHaveLength(6);
     expect(d.enemies).toHaveLength(5);
     expect(d.buffs).toHaveLength(12);
     // Every slot is open from the start, so the barrel order is the player's plan, not the level's.
-    expect(d.config.slots.barrelUnlockLevels).toEqual([1, 1, 1, 1]);
-    expect(d.config.slots.magazineUnlockLevels).toEqual([1, 1]);
+    expect(d.config.slots.barrelUnlockLevels).toEqual([1]);
+    expect(d.config.slots.magazineUnlockLevels).toEqual([1]);
+    for (const g of d.guns) expect(g.barrel.slots + g.magazineSlots).toBeLessThanOrEqual(12);
     const boss = d.timeline.events.find((e) => e.type === 'boss');
     expect(boss?.at).toBe(330);
   });

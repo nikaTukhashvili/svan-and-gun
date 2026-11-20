@@ -184,3 +184,11 @@ _Add dated notes here as tasks complete (decisions, deviations, follow-ups)._
 - The first CI run on GitHub passed everything (lint, format, types, unit, all e2e).
 - Phase 1 is now in playtesting: T36 balance pass and the T37 gun-feel check.
 
+**2026-11-20 · Barrel redesign: operators and gun twists (design change after playtest)**
+
+- Option A chosen: four operator mods (Amplifier, Hammer Spring = every Nth shot, Death Trigger = on kill, Echo Chamber) that change only the slot to their right. Operators never stack, and an operator never reaches into the other chain.
+- Gun twists: Long Gun 6+2 with a ×2 muzzle; Double Barrel 6 (2 chains of 3, alternating shots) + 2; Scrap SMG 3 + a ×3 crit chamber + 3 magazine. All within the `config.slots.maxTotalSlots` cap of 12. All layout numbers are data in `guns.json` > barrel.
+- The level-up screen sizes slots to the gun, tags MUZZLE / CRIT CHAMBER / LEFT and RIGHT BARREL, and marks operators with "→" or "(no target)". Gun select shows slots and the twist.
+- Tests: 169 unit tests (new operators.test.ts covers the user's Fire | ×2 | Lightning example, each operator, and each gun twist). upgrades.spec passes, including a layout screenshot per gun.
+- Balance note: barrel lengths now differ, so the T36 playtest should compare guns at the same run time.
+

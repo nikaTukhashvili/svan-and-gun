@@ -64,8 +64,11 @@ export const ConfigSchema = z.strictObject({
   }),
   xp: z.strictObject({ base: pos, step: nonNeg }),
   slots: z.strictObject({
-    barrelUnlockLevels: z.array(posInt).length(4),
-    magazineUnlockLevels: z.array(posInt).length(2),
+    /** Unlock level per slot index; slots past the end of the list use the last entry. */
+    barrelUnlockLevels: z.array(posInt).min(1),
+    magazineUnlockLevels: z.array(posInt).min(1),
+    /** Barrel + magazine slots on any gun (GDD: no gun has more than 12). */
+    maxTotalSlots: posInt,
     maxModLevel: posInt,
     maxCoreTier: posInt,
   }),
@@ -120,13 +123,24 @@ export const GunSchema = z.strictObject({
   /** Every Nth bullet is a free crit; 0 = no crit trait. */
   critEveryN: nonNegInt,
   tierBonus: z.strictObject({ damage: nonNeg, fireRate: nonNeg }),
+  /** The gun's twist: barrel length, separate chains, muzzle boost, crit chamber. */
+  barrel: z.strictObject({
+    slots: posInt,
+    /** Separate chains the barrel is split into; trigger pulls alternate between them. */
+    chains: posInt,
+    /** Strength multiplier for the last barrel slot (1 = none). */
+    muzzleBoost: z.number().min(1),
+    /** If > 0, the last barrel slot is a crit chamber: it works only on crit bullets, this many times as strong. */
+    critChamberMult: nonNeg,
+  }),
+  magazineSlots: posInt,
 });
 export const GunsSchema = z.array(GunSchema).min(1);
 
 // ---------- barrelMods.json / magazineMods.json ----------
 
 export const ElementSchema = z.enum(['fire', 'poison', 'lightning']);
-export const BarrelHookSchema = z.enum(['stats', 'onFire', 'onHit']);
+export const BarrelHookSchema = z.enum(['stats', 'onFire', 'onHit', 'operator']);
 export const MagazineHookSchema = z.enum([
   'stats',
   'onReloadStart',
@@ -169,6 +183,11 @@ export const BarrelModSchema = z.discriminatedUnion('id', [
   barrel('piercing_bore', { pierce: posInt }),
   barrel('heavy_slug', { damageBonus: nonNeg, fireRatePenalty: unit01, knockbackBonus: nonNeg }),
   barrel('split_shot', { shards: posInt, damageFactor: pos, arcDeg: nonNeg, range: pos }),
+  // Operators: change the mod in the slot to their right.
+  barrel('amplifier', { mult: pos }),
+  barrel('every_nth', { n: z.number().int().min(2), mult: pos }),
+  barrel('on_kill', { mult: pos }),
+  barrel('echo', { delaySec: pos, strength: pos }),
 ]);
 export const BarrelModsSchema = z.array(BarrelModSchema).min(1);
 

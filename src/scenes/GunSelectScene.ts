@@ -3,11 +3,12 @@ import { GAME_WIDTH, SceneKeys, UiColors } from '../config';
 import { RNG } from '../core/rng';
 import type { GunDef } from '../data/types';
 import { createButton } from '../ui/button';
+import { gunTwistText } from '../ui/cardText';
 import { getGameData } from './gameData';
 
 const FONT = 'system-ui, sans-serif';
 const CARD_W = 360;
-const CARD_H = 330;
+const CARD_H = 380;
 
 /** The opening text card (GDD: Story) and the choice of 1 of 3 Cores (T33). */
 export class GunSelectScene extends Phaser.Scene {
@@ -61,6 +62,7 @@ export class GunSelectScene extends Phaser.Scene {
       `Reload       ${gun.reloadSec} s`,
       `Range        ${gun.range} units`,
       `Spread       ${gun.spreadDeg}°`,
+      `Slots        ${gun.barrel.slots} barrel · ${gun.magazineSlots} mag`,
     ];
     this.add
       .text(x, top + 24, `[${index + 1}]`, { fontFamily: FONT, fontSize: '14px', color: UiColors.textDim })
@@ -84,13 +86,22 @@ export class GunSelectScene extends Phaser.Scene {
       })
       .setLineSpacing(6);
     this.add
-      .text(x, top + CARD_H - 36, gun.traitText, {
+      .text(x, top + CARD_H - 56, gun.traitText, {
         fontFamily: FONT,
         fontSize: '17px',
         fontStyle: 'bold',
         color: UiColors.accent,
       })
       .setOrigin(0.5);
+    this.add
+      .text(x, top + CARD_H - 28, gunTwistText(gun), {
+        fontFamily: FONT,
+        fontSize: '14px',
+        color: '#5bc0be',
+        align: 'center',
+      })
+      .setOrigin(0.5)
+      .setWordWrapWidth(CARD_W - 30);
   }
 
   private start(gunId: string): void {

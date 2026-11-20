@@ -15,7 +15,17 @@
     "pierce": 1,
     "knockback": 0.6,
     "critEveryN": 0,
-    "tierBonus": { "damage": 0.1, "fireRate": 0.05 }
+    "tierBonus": {
+      "damage": 0.1,
+      "fireRate": 0.05
+    },
+    "barrel": {
+      "slots": 6,
+      "chains": 1,
+      "muzzleBoost": 2,
+      "critChamberMult": 0
+    },
+    "magazineSlots": 2
   },
   {
     "id": "double_barrel",
@@ -33,7 +43,17 @@
     "pierce": 0,
     "knockback": 1.5,
     "critEveryN": 0,
-    "tierBonus": { "damage": 0.1, "fireRate": 0.05 }
+    "tierBonus": {
+      "damage": 0.1,
+      "fireRate": 0.05
+    },
+    "barrel": {
+      "slots": 6,
+      "chains": 2,
+      "muzzleBoost": 1,
+      "critChamberMult": 0
+    },
+    "magazineSlots": 2
   },
   {
     "id": "scrap_smg",
@@ -51,6 +71,16 @@
     "pierce": 0,
     "knockback": 0.15,
     "critEveryN": 10,
-    "tierBonus": { "damage": 0.1, "fireRate": 0.05 }
+    "tierBonus": {
+      "damage": 0.1,
+      "fireRate": 0.05
+    },
+    "barrel": {
+      "slots": 4,
+      "chains": 1,
+      "muzzleBoost": 1,
+      "critChamberMult": 3
+    },
+    "magazineSlots": 3
   }
 ]

@@ -2,7 +2,7 @@
  * Human-readable text for level-up cards and slots. Mod descriptions come from the data files,
  * with {param} placeholders filled from the level the card would give.
  */
-import type { GameData } from '../data/types';
+import type { GameData, GunDef } from '../data/types';
 import type { Card, ModSlot, SlotKind } from '../systems/build';
 
 export interface CardText {
@@ -111,4 +111,13 @@ export const STAT_LABELS: Record<string, string> = {
 export function slotLabel(data: GameData, kind: SlotKind, slot: ModSlot | null): string {
   if (!slot) return 'empty';
   return `${modName(data, kind, slot.id)} ${roman(slot.level)}`;
+}
+
+/** One line describing a gun's barrel twist (gun select, build sheet). */
+export function gunTwistText(gun: GunDef): string {
+  const b = gun.barrel;
+  if (b.chains > 1) return `Two barrels: shots alternate between ${b.chains} chains of ${b.slots / b.chains}`;
+  if (b.critChamberMult > 0) return `Crit chamber: last slot works only on crits, ×${b.critChamberMult}`;
+  if (b.muzzleBoost > 1) return `Muzzle: the last barrel slot works ×${b.muzzleBoost}`;
+  return '';
 }

@@ -26,8 +26,9 @@
     "step": 10
   },
   "slots": {
-    "barrelUnlockLevels": [1, 1, 1, 1],
-    "magazineUnlockLevels": [1, 1],
+    "barrelUnlockLevels": [1],
+    "magazineUnlockLevels": [1],
+    "maxTotalSlots": 12,
     "maxModLevel": 3,
     "maxCoreTier": 5
   },

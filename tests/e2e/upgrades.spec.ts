@@ -55,15 +55,16 @@ test('clicking two barrel slots swaps them', async ({ page }) => {
   await startRun(page, 'long_gun');
   await page.evaluate(() =>
     window.__svan!.run!.setBuild({
-      barrel: [{ id: 'split_shot', level: 1 }, { id: 'ricochet', level: 2 }, null, null],
+      barrel: [{ id: 'split_shot', level: 1 }, { id: 'ricochet', level: 2 }, null, null, null, null],
       magazine: [null, null],
       coreTier: 1,
     }),
   );
   await page.evaluate(() => window.__svan!.run!.grantScrap(5 + 15 + 25 + 35)); // level 5: barrel slot 2 open
   await levelUpOpen(page);
-  await clickGame(page, 150 + 75, 600); // slot 1
-  await clickGame(page, 150 + 160 + 75, 600); // slot 2
+  // Long Gun: 6 barrel + 2 magazine boxes, 125 px wide with 8 px gaps, starting at x = 40.
+  await clickGame(page, 40 + 62, 600); // slot 1
+  await clickGame(page, 40 + 125 + 8 + 62, 600); // slot 2
   const build = await page.evaluate(() => window.__svan!.run!.build());
   expect(build.barrel.slice(0, 2).map((s) => s?.id)).toEqual(['ricochet', 'split_shot']);
 });
@@ -118,3 +119,20 @@ test('C opens the build sheet (perks, stats, gun) and pauses the run; C closes i
   await page.waitForFunction(() => !window.__svan!.activeScenes().includes('buildSheet'));
   expect(errors).toEqual([]);
 });
+
+for (const gunId of ['long_gun', 'double_barrel', 'scrap_smg'] as const) {
+  test(`${gunId}: the level-up screen shows this gun's barrel layout`, async ({ page }) => {
+    await startRun(page, gunId, 3);
+    await page.evaluate((g) => {
+      const run = window.__svan!.run!;
+      const b = run.build();
+      const ids = ['ember_shot', 'amplifier', 'thunder_spark', 'echo', 'split_shot', 'ricochet'];
+      b.barrel = b.barrel.map((_, i) => (ids[i] ? { id: ids[i]!, level: 1 } : null));
+      if (g === 'scrap_smg') b.barrel[3] = { id: 'piercing_bore', level: 1 };
+      run.setBuild(b);
+      run.grantScrap(5);
+    }, gunId);
+    await levelUpOpen(page);
+    await page.screenshot({ path: test.info().outputPath(`slots-${gunId}.png`) });
+  });
+}

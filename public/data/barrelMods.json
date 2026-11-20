@@ -6,9 +6,21 @@
     "hooks": ["onHit"],
     "description": "Each hit adds a burn stack: {dps} damage per second for {durationSec} s. Up to {maxStacks} stacks.",
     "levels": [
-      { "dps": 3, "durationSec": 3, "maxStacks": 5 },
-      { "dps": 3, "durationSec": 3, "maxStacks": 7 },
-      { "dps": 3, "durationSec": 3, "maxStacks": 9 }
+      {
+        "dps": 3,
+        "durationSec": 3,
+        "maxStacks": 5
+      },
+      {
+        "dps": 3,
+        "durationSec": 3,
+        "maxStacks": 7
+      },
+      {
+        "dps": 3,
+        "durationSec": 3,
+        "maxStacks": 9
+      }
     ]
   },
   {
@@ -18,9 +30,24 @@
     "hooks": ["onHit"],
     "description": "Poisons for {dps} damage per second for {durationSec} s. On death the poison spreads to {spreadTargets} enemies within {spreadRadius} units.",
     "levels": [
-      { "dps": 8, "durationSec": 6, "spreadTargets": 2, "spreadRadius": 3 },
-      { "dps": 8, "durationSec": 6, "spreadTargets": 3, "spreadRadius": 3 },
-      { "dps": 8, "durationSec": 6, "spreadTargets": 4, "spreadRadius": 3 }
+      {
+        "dps": 8,
+        "durationSec": 6,
+        "spreadTargets": 2,
+        "spreadRadius": 3
+      },
+      {
+        "dps": 8,
+        "durationSec": 6,
+        "spreadTargets": 3,
+        "spreadRadius": 3
+      },
+      {
+        "dps": 8,
+        "durationSec": 6,
+        "spreadTargets": 4,
+        "spreadRadius": 3
+      }
     ]
   },
   {
@@ -30,9 +57,21 @@
     "hooks": ["onHit"],
     "description": "Each hit chains to {chains} more enemies within {radius} units.",
     "levels": [
-      { "chains": 2, "radius": 4, "damageFactor": 0.5 },
-      { "chains": 3, "radius": 4, "damageFactor": 0.5 },
-      { "chains": 4, "radius": 4, "damageFactor": 0.5 }
+      {
+        "chains": 2,
+        "radius": 4,
+        "damageFactor": 0.5
+      },
+      {
+        "chains": 3,
+        "radius": 4,
+        "damageFactor": 0.5
+      },
+      {
+        "chains": 4,
+        "radius": 4,
+        "damageFactor": 0.5
+      }
     ]
   },
   {
@@ -42,9 +81,21 @@
     "hooks": ["onFire"],
     "description": "Fires {bullets} bullets instead of 1.",
     "levels": [
-      { "bullets": 2, "damageFactor": 0.65, "spreadDeg": 8 },
-      { "bullets": 2, "damageFactor": 0.75, "spreadDeg": 8 },
-      { "bullets": 3, "damageFactor": 0.75, "spreadDeg": 12 }
+      {
+        "bullets": 2,
+        "damageFactor": 0.65,
+        "spreadDeg": 8
+      },
+      {
+        "bullets": 2,
+        "damageFactor": 0.75,
+        "spreadDeg": 8
+      },
+      {
+        "bullets": 3,
+        "damageFactor": 0.75,
+        "spreadDeg": 12
+      }
     ]
   },
   {
@@ -54,9 +105,21 @@
     "hooks": ["onHit"],
     "description": "When the bullet would stop, it bounces to {bounces} nearby enemies.",
     "levels": [
-      { "bounces": 1, "radius": 5, "damageFactor": 1 },
-      { "bounces": 2, "radius": 5, "damageFactor": 1 },
-      { "bounces": 3, "radius": 5, "damageFactor": 1 }
+      {
+        "bounces": 1,
+        "radius": 5,
+        "damageFactor": 1
+      },
+      {
+        "bounces": 2,
+        "radius": 5,
+        "damageFactor": 1
+      },
+      {
+        "bounces": 3,
+        "radius": 5,
+        "damageFactor": 1
+      }
     ]
   },
   {
@@ -66,9 +129,18 @@
     "hooks": ["onFire"],
     "description": "Bullet speed and range up.",
     "levels": [
-      { "speedBonus": 0.5, "rangeBonus": 0.3 },
-      { "speedBonus": 0.7, "rangeBonus": 0.3 },
-      { "speedBonus": 0.9, "rangeBonus": 0.3 }
+      {
+        "speedBonus": 0.5,
+        "rangeBonus": 0.3
+      },
+      {
+        "speedBonus": 0.7,
+        "rangeBonus": 0.3
+      },
+      {
+        "speedBonus": 0.9,
+        "rangeBonus": 0.3
+      }
     ]
   },
   {
@@ -77,7 +149,17 @@
     "element": null,
     "hooks": ["onFire"],
     "description": "Bullets pass through {pierce} more enemies.",
-    "levels": [{ "pierce": 1 }, { "pierce": 2 }, { "pierce": 3 }]
+    "levels": [
+      {
+        "pierce": 1
+      },
+      {
+        "pierce": 2
+      },
+      {
+        "pierce": 3
+      }
+    ]
   },
   {
     "id": "heavy_slug",
@@ -86,9 +168,21 @@
     "hooks": ["stats", "onFire"],
     "description": "Bigger damage and knockback, slower fire rate.",
     "levels": [
-      { "damageBonus": 0.4, "fireRatePenalty": 0.15, "knockbackBonus": 0.5 },
-      { "damageBonus": 0.55, "fireRatePenalty": 0.15, "knockbackBonus": 0.5 },
-      { "damageBonus": 0.7, "fireRatePenalty": 0.15, "knockbackBonus": 0.5 }
+      {
+        "damageBonus": 0.4,
+        "fireRatePenalty": 0.15,
+        "knockbackBonus": 0.5
+      },
+      {
+        "damageBonus": 0.55,
+        "fireRatePenalty": 0.15,
+        "knockbackBonus": 0.5
+      },
+      {
+        "damageBonus": 0.7,
+        "fireRatePenalty": 0.15,
+        "knockbackBonus": 0.5
+      }
     ]
   },
   {
@@ -98,9 +192,102 @@
     "hooks": ["onHit"],
     "description": "On hit, splits into {shards} shards.",
     "levels": [
-      { "shards": 3, "damageFactor": 0.3, "arcDeg": 60, "range": 4 },
-      { "shards": 4, "damageFactor": 0.3, "arcDeg": 70, "range": 4 },
-      { "shards": 5, "damageFactor": 0.3, "arcDeg": 80, "range": 4 }
+      {
+        "shards": 3,
+        "damageFactor": 0.3,
+        "arcDeg": 60,
+        "range": 4
+      },
+      {
+        "shards": 4,
+        "damageFactor": 0.3,
+        "arcDeg": 70,
+        "range": 4
+      },
+      {
+        "shards": 5,
+        "damageFactor": 0.3,
+        "arcDeg": 80,
+        "range": 4
+      }
+    ]
+  },
+  {
+    "id": "amplifier",
+    "name": "Amplifier",
+    "element": null,
+    "hooks": ["operator"],
+    "description": "Operator: the mod to its right works {mult}x as strong.",
+    "levels": [
+      {
+        "mult": 2
+      },
+      {
+        "mult": 2.5
+      },
+      {
+        "mult": 3
+      }
+    ]
+  },
+  {
+    "id": "every_nth",
+    "name": "Hammer Spring",
+    "element": null,
+    "hooks": ["operator"],
+    "description": "Operator: the mod to its right only works on every {n}th shot, but {mult}x as strong.",
+    "levels": [
+      {
+        "n": 4,
+        "mult": 3
+      },
+      {
+        "n": 3,
+        "mult": 3
+      },
+      {
+        "n": 3,
+        "mult": 4
+      }
+    ]
+  },
+  {
+    "id": "on_kill",
+    "name": "Death Trigger",
+    "element": null,
+    "hooks": ["operator"],
+    "description": "Operator: the mod to its right only triggers when a hit kills, but {mult}x as strong.",
+    "levels": [
+      {
+        "mult": 3
+      },
+      {
+        "mult": 4
+      },
+      {
+        "mult": 5
+      }
+    ]
+  },
+  {
+    "id": "echo",
+    "name": "Echo Chamber",
+    "element": null,
+    "hooks": ["operator"],
+    "description": "Operator: the mod to its right triggers again {delaySec} s later at {strength}x strength.",
+    "levels": [
+      {
+        "delaySec": 0.5,
+        "strength": 0.5
+      },
+      {
+        "delaySec": 0.5,
+        "strength": 0.75
+      },
+      {
+        "delaySec": 0.4,
+        "strength": 1
+      }
     ]
   }
 ]

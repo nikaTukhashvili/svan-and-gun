@@ -9,7 +9,7 @@ import type { GameData, GunDef, TimelineEvent } from '../data/types';
 import { testHookEnabled } from '../debug/testHook';
 import { Player } from '../entities/Player';
 import { BossController, type Rubble, type SummonRequest } from '../systems/boss';
-import { applyCard, drawCards, swapSlots, unlockedSlots, type Card } from '../systems/build';
+import { applyCard, buildForGun, drawCards, swapSlots, unlockedSlots, type Card } from '../systems/build';
 import { BulletSystem, REDIRECTED, type Bullet } from '../systems/bullets';
 import { Destructibles, type Destructible } from '../systems/destructibles';
 import { applyOnFire, buildPipeline, HitResolver, type Pipeline } from '../systems/modPipeline';
@@ -122,6 +122,7 @@ export class GameScene extends Phaser.Scene {
     this.gd = getGameData(this);
     this.gun = getById(this.gd.guns, data.gunId, 'gun');
     this.run = createRunState(data.gunId, data.seed);
+    this.run.build = buildForGun(this.gun); // each gun has its own barrel length and twist
     this.ended = false;
     this.chestsPending = 0;
     this.levelUpOpen = false;
@@ -188,7 +189,7 @@ export class GameScene extends Phaser.Scene {
     });
     this.projectiles = new EnemyProjectileSystem(d.config.caps.maxEnemyProjectiles, ENEMY_PROJECTILE_RADIUS);
     this.director = new SpawnDirector(d.timeline, this.rng);
-    this.pipeline = buildPipeline(d, this.run.build);
+    this.pipeline = buildPipeline(d, this.run.build, this.gun);
     this.status = new StatusEffectSystem(this.enemies, d.config.combat.statusTickSec);
     this.resolver = new HitResolver(
       () => this.pipeline,
@@ -363,6 +364,7 @@ export class GameScene extends Phaser.Scene {
 
     // Statuses, explosions, pickups
     this.status.update(dt);
+    this.resolver.update(dt);
     this.updateGrenades(dt);
     this.effects.lightning(this.resolver.arcs);
     this.pickups.update(
@@ -502,7 +504,7 @@ export class GameScene extends Phaser.Scene {
   private refreshStats(): void {
     const d = this.gd;
     this.stats = computeStats(baseStats(d.config, d.cards), this.meta, this.run.runBonuses);
-    this.pipeline = buildPipeline(d, this.run.build);
+    this.pipeline = buildPipeline(d, this.run.build, this.gun);
     this.weapon.setStats(
       computeWeaponStats(this.gun, this.stats, this.run.build.coreTier, this.pipeline.weaponMods),
     );
@@ -530,7 +532,9 @@ export class GameScene extends Phaser.Scene {
           : "Gunsmith's Chest",
       queuedAfter: () => queued() - 1,
       build: () => this.run.build,
-      unlocked: (kind) => unlockedSlots(d, kind, this.progression.level),
+      unlocked: (kind) => unlockedSlots(d, kind, this.progression.level, this.run.build[kind].length),
+      pipeline: () => this.pipeline,
+      gun: () => this.gun,
       unlockLevel: (kind, i) =>
         (kind === 'barrel' ? d.config.slots.barrelUnlockLevels : d.config.slots.magazineUnlockLevels)[i] ?? 0,
       cards: () => this.hand,
