@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH, SceneKeys, UiColors } from '../config';
 import { createButton } from '../ui/button';
+import { applyMusicVolume } from './audio/Music';
 import { applySettings, getSave } from './meta';
 
 /**
- * Settings (T33): volume, auto-fire, screen shake, fullscreen. Saved immediately.
+ * Settings (T33): volume, music volume, auto-fire, screen shake, fullscreen. Saved immediately.
  * Opened from the menu (replaces it) or over the pause menu (overlay: true).
  */
 export class SettingsScene extends Phaser.Scene {
@@ -37,6 +38,7 @@ export class SettingsScene extends Phaser.Scene {
     const changed = () => {
       save.save();
       applySettings(this.game, s);
+      applyMusicVolume(this.game, s);
       this.render();
     };
     const onOff = (v: boolean) => (v ? 'ON' : 'OFF');
@@ -51,18 +53,20 @@ export class SettingsScene extends Phaser.Scene {
         })
         .setOrigin(0.5),
     );
-    const vol = Math.round(s.volume * 100);
-    this.root.add([
+    /** A "−  label  +" row for a 0..1 setting in steps of 10%. */
+    const slider = (y: number, label: string, get: () => number, set: (v: number) => void) => [
       createButton(
         this,
         cx - 230,
-        230,
+        y,
         '−',
-        () => ((s.volume = Math.max(0, Math.round((s.volume - 0.1) * 10) / 10)), changed()),
-        { width: 70 },
+        () => (set(Math.max(0, Math.round((get() - 0.1) * 10) / 10)), changed()),
+        {
+          width: 70,
+        },
       ),
       this.add
-        .text(cx, 230, `Volume ${vol}%`, {
+        .text(cx, y, `${label} ${Math.round(get() * 100)}%`, {
           fontFamily: 'system-ui, sans-serif',
           fontSize: '26px',
           color: UiColors.text,
@@ -71,15 +75,39 @@ export class SettingsScene extends Phaser.Scene {
       createButton(
         this,
         cx + 230,
-        230,
+        y,
         '+',
-        () => ((s.volume = Math.min(1, Math.round((s.volume + 0.1) * 10) / 10)), changed()),
-        { width: 70 },
+        () => (set(Math.min(1, Math.round((get() + 0.1) * 10) / 10)), changed()),
+        {
+          width: 70,
+        },
+      ),
+    ];
+    this.root.add([
+      ...slider(
+        200,
+        'Volume',
+        () => s.volume,
+        (v) => (s.volume = v),
+      ),
+      ...slider(
+        270,
+        'Music',
+        () => s.musicVolume,
+        (v) => (s.musicVolume = v),
       ),
       createButton(
         this,
         cx,
-        320,
+        345,
+        `Music: ${s.musicMuted ? 'MUTED' : 'ON'}  [M]`,
+        () => ((s.musicMuted = !s.musicMuted), changed()),
+        { width: 380 },
+      ),
+      createButton(
+        this,
+        cx,
+        415,
         `Auto-fire: ${onOff(s.autoFire)}`,
         () => ((s.autoFire = !s.autoFire), changed()),
         { width: 380 },
@@ -87,7 +115,7 @@ export class SettingsScene extends Phaser.Scene {
       createButton(
         this,
         cx,
-        400,
+        485,
         `Screen shake: ${onOff(s.screenShake)}`,
         () => ((s.screenShake = !s.screenShake), changed()),
         {
@@ -97,7 +125,7 @@ export class SettingsScene extends Phaser.Scene {
       createButton(
         this,
         cx,
-        480,
+        555,
         `Fullscreen: ${onOff(this.scale.isFullscreen)}`,
         () => {
           // Must run inside the click: browsers only allow fullscreen from a user gesture.
@@ -109,7 +137,7 @@ export class SettingsScene extends Phaser.Scene {
         },
         { width: 380 },
       ),
-      createButton(this, cx, 600, 'Back', () => this.close(), { width: 220 }),
+      createButton(this, cx, 635, 'Back', () => this.close(), { width: 220 }),
     ]);
   }
 

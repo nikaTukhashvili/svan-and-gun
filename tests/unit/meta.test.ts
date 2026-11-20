@@ -35,6 +35,17 @@ class BlockedStore implements KeyValueStore {
 }
 
 describe('SaveSystem', () => {
+  it('a save from before the music settings still loads, with music defaults', () => {
+    const store = new MemoryStore();
+    const old = freshSave() as unknown as { settings: Record<string, unknown> };
+    delete old.settings.musicVolume;
+    delete old.settings.musicMuted;
+    store.setItem(KEY, JSON.stringify(old));
+    const s = new SaveSystem(store, KEY, BROKEN);
+    expect(s.load().settings).toMatchObject({ musicVolume: 0.6, musicMuted: false });
+    expect(s.notice).toBeNull();
+  });
+
   it('starts fresh, and round-trips silver, buffs, scores and settings', () => {
     const store = new MemoryStore();
     const a = new SaveSystem(store, KEY, BROKEN);

@@ -53,6 +53,7 @@ import { EQUIPMENT_SLOTS, type BuildSheetData, type SheetLine } from './BuildShe
 import type { ResultsData } from './ResultsScene';
 import { getGameData } from './gameData';
 import { getSave } from './meta';
+import { bindMusicKeys, startMusic } from './audio/Music';
 import { SFX_NAMES, sfxFor, type Sfx, type SfxName } from './audio/Sfx';
 import { DamageNumbers } from './game/DamageNumbers';
 import { metaBonuses } from '../systems/market';
@@ -191,6 +192,8 @@ export class GameScene extends Phaser.Scene {
 
     this.bus = new EventBus<GameEvents>();
     this.rng = new RNG(this.run.seed);
+    startMusic(this); // already playing from the menu; starts it for runs opened directly
+    bindMusicKeys(this);
     this.meta =
       this.pgOptions && !this.pgOptions.marketBuffs
         ? emptyBonuses()

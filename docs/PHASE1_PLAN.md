@@ -245,3 +245,9 @@ _Add dated notes here as tasks complete (decisions, deviations, follow-ups)._
 - Still synthesized with WebAudio (no files). New: crit, lightning zap, freeze, burst (Steam/Brimstone), grenade throw, enemy shot, silver, heal (kubdari), hunting horn, chest, elite arrival, boss arrival, victory, defeat, menu click, and level-up screen sounds (path choice, grab, place, upgrade, Mutation, replace, refused drop, reroll).
 - One shared sound bank per game (`sfxFor`); combat sounds vary their pitch slightly. The Training Ground panel has a Sound test.
 - Music is not added yet (the user is choosing a source).
+
+**2026-11-21 · Temporary soundtrack (branch `barrel-fusion`)**
+
+- One looping track for the whole game: `public/audio/run.mp3` (the user's Suno track "Towers of Stubborn"). Loaded in the background when the menu first opens, so boot does not wait for it; plays after the first click (browser audio unlock).
+- Settings: Music volume and a mute toggle (saved; `musicVolume` / `musicMuted` default in the schema, so older saves stay valid). M mutes anywhere.
+- Skipped under automation (`navigator.webdriver`); `tests/e2e/music.spec.ts` hides that flag to test the real path.
