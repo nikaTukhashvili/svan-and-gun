@@ -23,8 +23,6 @@ export interface Bullet {
   volleyId: number;
   /** 0 = fired by the trigger; children (shards, ricochets) are 1, 2. */
   generation: number;
-  /** First barrel slot whose on-hit mods apply to this bullet (children only get later slots). */
-  fromSlot: number;
   /** Barrel chain whose mods apply (Double Barrel has two). */
   chain: number;
   /** Ricochet bounces left; -1 = ricochet has not triggered for this bullet yet. */
@@ -73,7 +71,6 @@ export class BulletSystem {
         crit: false,
         volleyId: 0,
         generation: 0,
-        fromSlot: 0,
         chain: 0,
         bouncesLeft: -1,
         hitIds: new Set(),
@@ -88,7 +85,7 @@ export class BulletSystem {
   }
 
   /** Spawn from a ShotSpec at (x, y). Returns null when the cap is reached (the shot is dropped). */
-  spawn(spec: ShotSpec, x: number, y: number, generation = 0, fromSlot = 0): Bullet | null {
+  spawn(spec: ShotSpec, x: number, y: number, generation = 0): Bullet | null {
     const index = this.free.pop();
     if (index === undefined) return null;
     const b = this.bullets[index]!;
@@ -104,7 +101,6 @@ export class BulletSystem {
     b.crit = spec.crit;
     b.volleyId = spec.volleyId;
     b.generation = generation;
-    b.fromSlot = fromSlot;
     b.chain = spec.chain ?? 0;
     b.bouncesLeft = -1;
     b.hitIds.clear();

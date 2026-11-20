@@ -4,12 +4,12 @@
  */
 import type { RunResult } from '../core/events';
 import type { Rarity, StatId, StatMode } from '../data/types';
-import { createBuild, type RunBuild } from './build';
+import { createBuild, type RunBuild, type SupportLevels } from './build';
 import { emptyBonuses, type StatBonuses } from './stats';
 
 export type RunPick =
   | { kind: 'perk'; cardId: string; rarity: Rarity; stat: StatId; mode: StatMode; value: number }
-  | { kind: 'tinker'; upgrades: { kind: 'barrel' | 'magazine'; modId: string }[] };
+  | { kind: 'tinker'; upgrades: { slot: number; modId: string }[] };
 
 export interface RunState {
   readonly seed: number;
@@ -24,6 +24,8 @@ export interface RunState {
   timeSec: number;
   /** Run stat cards and other run-only bonuses. */
   runBonuses: StatBonuses;
+  /** Support perks taken (were magazine mods): id → level. */
+  support: SupportLevels;
   rerollsUsed: number;
   /** Perks (run stat cards) and Tinker picks, in the order they were chosen (build sheet). */
   picks: RunPick[];
@@ -41,6 +43,7 @@ export function createRunState(gunId: string, seed: number): RunState {
     silver: 0,
     timeSec: 0,
     runBonuses: emptyBonuses(),
+    support: {},
     rerollsUsed: 0,
     picks: [],
     result: null,

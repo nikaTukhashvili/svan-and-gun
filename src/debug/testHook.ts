@@ -6,8 +6,9 @@
 import Phaser from 'phaser';
 import { SceneKeys } from '../config';
 import type { RunResult } from '../core/events';
-import type { RunBuild } from '../systems/build';
+import type { Card, RunBuild } from '../systems/build';
 import type { DpsStats } from '../systems/dpsMeter';
+import type { LevelUpScene } from '../scenes/LevelUpScene';
 import { freshSave, type SaveSystem, type SaveV1 } from '../systems/save';
 
 /** Snapshot of the current run for tests. Positions in units. */
@@ -33,6 +34,8 @@ export interface RunDebugState {
   result: RunResult | null;
   level: number;
   levelUpOpen: boolean;
+  /** Cards picked on level-up screens this run. */
+  cardsPicked: number;
   silver: number;
 }
 
@@ -68,6 +71,10 @@ export interface RunDebugApi {
   grantScrap(amount: number): void;
   build(): RunBuild;
   setBuild(build: RunBuild): void;
+  /** The next level-up screen shows exactly these cards (then normal draws resume). */
+  queueHand(cards: Card[]): void;
+  /** Support perk levels taken. */
+  support(): Record<string, number>;
   pickups(): { kind: string; value: number; x: number; y: number }[];
   /** Present in the Training Ground only. */
   playground?: PlaygroundDebugApi;
@@ -97,6 +104,8 @@ export interface SvanTestHook {
   /** Stop every scene and open the Training Ground with this gun. */
   startPlayground(gunId: string): void;
   run?: RunDebugApi;
+  /** Slot centres on the open level-up screen (game coordinates), or null when it is closed. */
+  levelUpSlots(): { y: number; barrel: number[]; muzzle: number[] } | null;
   /** The save (MetaState): read it, give silver, wipe it. */
   meta?: { state(): SaveV1; setSilver(n: number): void; reset(): void };
 }
@@ -119,6 +128,10 @@ export function installTestHook(game: Phaser.Game): void {
     activeScenes: () => game.scene.getScenes(true).map((s) => s.sys.settings.key),
     textureExists: (key) => game.textures.exists(key),
     fps: () => game.loop.actualFps,
+    levelUpSlots: () => {
+      if (!game.scene.isActive(SceneKeys.LevelUp)) return null;
+      return (game.scene.getScene(SceneKeys.LevelUp) as LevelUpScene).slotCenters();
+    },
     startRun: (gunId, seed = 1) => {
       for (const s of game.scene.getScenes(true)) game.scene.stop(s.sys.settings.key);
       game.scene.start(SceneKeys.Game, { gunId, seed });

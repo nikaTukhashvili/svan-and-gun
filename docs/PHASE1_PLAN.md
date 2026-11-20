@@ -199,3 +199,34 @@ _Add dated notes here as tasks complete (decisions, deviations, follow-ups)._
 - `DpsMeter` (pure, unit tested): rolling DPS, session average, peak, total, hits, crits and status damage. A label over each dummy kind; the pack's numbers are its six members added up. `enemy:damaged` now carries the enemy `uid`.
 - F2 HTML panel: gun, every slot (mod, level, order), Core Tier, perks (C/R/E), Reset build/perks/meters, Respawn dummies, Clear/Spawn enemies, God mode, Market buffs, and an all-target readout. The slot tag logic moved to `cardText.barrelSlotTag` (shared with the level-up screen).
 - Tests: 182 unit tests, new `playground.spec.ts` (3). Every e2e spec passes when run one at a time.
+
+**2026-11-20 · Barrel fusion replaces operators, slot order, levels and the magazine (branch `barrel-fusion`)**
+
+- Design change after playtest: the left→right operators were hard to reason about. Modules now **fuse on contact**: tier = copies fused in, with no cap, and tiers add (Fire 2 + Fire 1 = Fire 3; Fire 3 + Thunder 2 = Plasma 5). An equal-tier, capped version was rejected because the last slots of a full barrel could never max out.
+- 3 elements and 3 hybrids (Plasma, Brimstone, Blight Arc), 6 grey modules, and 5 directional fittings (Booster ▶/◀, Brace, Overcharger, Siphon) that scale their neighbours. Numbers are base + perTier × (tier − 1) in `barrelMods.json`.
+- The magazine is gone: its 6 mods are support perks (no slot, 3 levels, `supportPerks.json`). Barrels are 8 / 8 / 7 with slots unlocking at levels 1, 4, 7, 10 and 13. The gun twists stay (muzzle, crit chamber, Double Barrel halves; nothing fuses or boosts across the gap).
+- Level-up screen: pick a card; a module card asks for a slot, with a hover preview of the fusion cascade, by click or number key; a replace asks twice; swaps fuse too. The Training Ground panel has tiers, a "fuse on place" option and support perks.
+- Tests: 198 unit tests (new `fusion.test.ts`; `operators.test.ts` removed). Every e2e spec passes when run one at a time, including a fusion placement test and a layout screenshot per gun.
+- Balance is untested: hybrid and fitting numbers are first guesses, to tune in the Training Ground.
+- Playtest change (same day): a hybrid grows **only from the same hybrid**. Feeding it a parent element (Plasma II + Thunder → Plasma III) felt wrong, so elements no longer fuse into a hybrid.
+
+**2026-11-21 · Muzzle slots (branch `barrel-fusion`, part of the upgrade system)**
+
+- Every gun ends in muzzle slots (Long Gun 3, Double Barrel 2, Scrap SMG 3). 7 muzzle pieces in `muzzles.json`, each with an upside and a downside; all fitted pieces stack on every shot, with floors so stacked downsides never break the gun.
+- A muzzle card dropped on the same piece upgrades it (no cap), on an empty slot fits it, on another piece replaces it (with a confirm). No fusing. Muzzle cards come from level-ups.
+- The Long Gun's "last barrel slot ×2" twist is removed (its muzzle replaces it). The Double Barrel starts every run with Grenade Mag level 1 (`guns.json > startingSupport`).
+- Level-up screen: the gun reads left to right as Core, barrel, muzzle. The Training Ground workbench has a muzzle row, and the panel a Muzzle section (piece + level per slot, stacked total).
+- Tests: `tests/unit/muzzle.test.ts`; e2e muzzle upgrade by drag, workbench muzzle fit/upgrade/remove. `window.__svan.levelUpSlots()` gives slot centres to e2e tests.
+
+**2026-11-21 · Level-up paths and the build sheet (branch `barrel-fusion`)**
+
+- A level-up (and a chest) first asks for a path, then shows 3 cards from it: **Favor of the Gods** (elements and blessings, i.e. the run stat cards) or **Gunsmith** (grey modules, fittings, muzzle pieces, magazine work = support perks, Core Tier, Tinker). `cards.json > paths`; the registry checks every card type is in exactly one path. Tinker has its own weight (`typeWeights.tinker`).
+- The build sheet (C) is redrawn: equipment paper doll (Svan Hat, Cloak, Chokha, 2 Rings, Boots; empty until items exist), stats, blessings and Tinker, magazine work, and the gun as core → barrel → muzzle.
+- Tests: path unit tests in `build.test.ts`; e2e path choice. The e2e `pickFirst` presses '1' up to 5 times (path, card, slot, confirm).
+
+**2026-11-21 · Frost, the fourth element (branch `barrel-fusion`)**
+
+- Frost Shot: chill stacks slow enemies; full stacks freeze (no movement or actions, no contact damage, +shatter hit damage). Freeze immunity after a freeze (`config.combat.freezeImmunitySec`), slow cap (`maxChillSlow`); the boss is only slowed.
+- Hybrids: Steam (fire + frost: burn, chill, steam burst on freeze), Frostbite (poison + frost: poison ×2 on chilled enemies), Hailstorm (lightning + frost: chains chill everyone reached). 21 barrel modules now (4 elements, 6 hybrids).
+- Visuals: chilled enemies tinted blue, frozen ones filled ice-white, a pale flash when one freezes.
+- Tests: `tests/unit/frost.test.ts`.

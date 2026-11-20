@@ -43,7 +43,7 @@ test('shooting the dummy fills the meter; the dummy never dies; reset clears it'
   );
   await page.getByTestId('playground-barrel-0').selectOption(firstMod);
   const build = await page.evaluate(() => window.__svan!.run!.build());
-  expect(build.barrel[0]).toEqual({ id: firstMod, level: 1 });
+  expect(build.barrel[0]).toEqual({ id: firstMod, tier: 1 });
 
   // The plain dummy stands straight to the right of the player.
   const aim = await gamePoint(page, 960, 360);
@@ -77,4 +77,53 @@ test('switching the gun in the panel restarts the Training Ground with that gun'
   await page.waitForFunction(() => window.__svan?.run?.state().gunId === 'scrap_smg');
   await page.waitForFunction(() => window.__svan?.run?.playground !== undefined);
   await expect(page.getByTestId('playground-panel')).toHaveCount(1);
+});
+
+test('B opens the workbench: drag modules onto the barrel, merge, remove, close', async ({ page }) => {
+  const errors = trackErrors(page);
+  await openFromMenu(page);
+  await page.keyboard.press('b');
+  await page.waitForFunction(() => window.__svan!.activeScenes().includes('levelUp'));
+  await expect(page.getByTestId('playground-panel')).toBeHidden(); // out of the way of the barrel
+
+  const drag = async (from: [number, number], to: [number, number]) => {
+    const a = await gamePoint(page, from[0], from[1]);
+    const b = await gamePoint(page, to[0], to[1]);
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    await page.mouse.move(b.x, b.y, { steps: 10 });
+    await page.mouse.up();
+    await page.waitForTimeout(900); // the merge animation
+  };
+  const barrel = () =>
+    page.evaluate(() => window.__svan!.run!.build().barrel.map((s) => (s ? `${s.id}:${s.tier}` : null)));
+  const EMBER: [number, number] = [400, 133]; // first chip of the element row
+  const CHOKE: [number, number] = [640 - (7 * 150 + 6 * 10) / 2 + 75 + 2 * 160, 133 + 4 * 58]; // muzzle row, 3rd
+  const slots = (await page.evaluate(() => window.__svan!.levelUpSlots()))!;
+  const slot = (i: number): [number, number] => [slots.barrel[i]!, slots.y];
+  const muzzleSlot = (i: number): [number, number] => [slots.muzzle[i]!, slots.y];
+  const muzzle = () => page.evaluate(() => window.__svan!.run!.build().muzzle);
+
+  await drag(EMBER, slot(0));
+  await drag(EMBER, slot(3)); // not touching: two separate Ember Shots
+  expect((await barrel()).slice(0, 4)).toEqual(['ember_shot:1', null, null, 'ember_shot:1']);
+  await drag(EMBER, slot(1)); // next to the first one: they merge
+  expect((await barrel()).slice(0, 4)).toEqual([null, 'ember_shot:2', null, 'ember_shot:1']);
+  await page.screenshot({ path: test.info().outputPath('workbench.png') });
+  await drag(slot(3), [640, 300]); // dragged off the barrel: removed
+  expect((await barrel())[3]).toBeNull();
+
+  // Muzzle: fit, then the same piece again upgrades it; dragged off, it is removed.
+  await drag(CHOKE, muzzleSlot(0));
+  await drag(CHOKE, muzzleSlot(0));
+  expect((await muzzle())[0]).toEqual({ id: 'choke', level: 2 });
+  await drag(CHOKE, slot(5)); // a muzzle piece never goes in the barrel
+  expect((await barrel())[5]).toBeNull();
+  await drag(muzzleSlot(0), [640, 300]);
+  expect((await muzzle())[0]).toBeNull();
+
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !window.__svan!.activeScenes().includes('levelUp'));
+  await expect(page.getByTestId('playground-panel')).toBeVisible();
+  expect(errors).toEqual([]);
 });

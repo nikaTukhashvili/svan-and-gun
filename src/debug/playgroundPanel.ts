@@ -1,35 +1,46 @@
 /**
  * Training Ground panel (dev tool): a plain HTML panel docked to the left of the game
  * (the dummies stand to the right of the player).
- * Set the gun, every slot (mod + level + order), Core Tier and perks; reset things; spawn enemies;
+ * Set the gun, every barrel slot (module + tier + order), the muzzle (piece + level), Core Tier,
+ * perks and support perks;
+ * reset things; spawn enemies;
  * read the DPS meter. It only talks to a PlaygroundController, never to Phaser.
  *
  * Only dropdowns, buttons and checkboxes, and each control gives focus back after a change,
  * so WASD and other keys keep going to the game.
  */
 import type { GameData, Rarity } from '../data/types';
-import type { ModSlot, RunBuild, SlotKind } from '../systems/build';
+import type { ModSlot, RunBuild, SupportLevels } from '../systems/build';
 import type { DpsStats } from '../systems/dpsMeter';
-import type { BarrelLayout, OperatorInfo } from '../systems/modPipeline';
-import { barrelSlotTag, modDescription, modName } from '../ui/cardText';
+import type { BarrelLayout, Pipeline } from '../systems/modPipeline';
+import type { MuzzleSlot } from '../systems/muzzle';
+import { barrelSlotTag, modDescription, muzzleDescription, muzzleEffects } from '../ui/cardText';
 
 export interface PlaygroundController {
   readonly data: GameData;
   gunId(): string;
   build(): Readonly<RunBuild>;
   layout(): BarrelLayout;
-  operators(): readonly OperatorInfo[];
-  /** Times each perk was taken. */
+  /** Fittings and per-slot strength. */
+  pipeline(): Pipeline;
+  support(): Readonly<SupportLevels>;
+  /** Times each run stat perk was taken. */
   perkCounts(): Readonly<Record<string, number>>;
   setGun(id: string): void;
-  setSlot(kind: SlotKind, index: number, slot: ModSlot | null): void;
-  swap(kind: SlotKind, a: number, b: number): void;
+  /** `fuse`: place it like a card (fuses with neighbours); otherwise set it exactly. */
+  setSlot(index: number, slot: ModSlot | null, fuse: boolean): void;
+  swap(a: number, b: number, fuse: boolean): void;
+  /** Put a muzzle piece (or nothing) in a muzzle slot. */
+  setMuzzle(index: number, slot: MuzzleSlot | null): void;
   setCoreTier(tier: number): void;
   addPerk(cardId: string, rarity: Rarity): void;
+  setSupport(id: string, level: number): void;
   resetBuild(): void;
   resetPerks(): void;
   resetMeters(): void;
   respawnDummies(): void;
+  /** The real level-up screen in Workbench mode: drag and drop every module. */
+  openWorkbench(): void;
   clearEnemies(): void;
   spawnEnemies(id: string, count: number, elite: boolean): void;
   godMode(): boolean;
@@ -39,6 +50,9 @@ export interface PlaygroundController {
   /** All targets together. */
   readout(): DpsStats;
 }
+
+/** Tiers offered in the dropdown (tiers have no cap; this is only how far the panel goes). */
+const PANEL_MAX_TIER = 12;
 
 const STYLE_ID = 'svan-playground-style';
 const CSS = `
@@ -65,6 +79,10 @@ const CSS = `
 #svan-playground .readout { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; font-family: monospace; }
 #svan-playground .readout b { color: #f2b632; font-weight: normal; }
 #svan-playground .buttons { display: flex; flex-wrap: wrap; gap: 4px; }
+#svan-playground .grid2 { display: grid; grid-template-columns: 1fr auto; gap: 2px 6px; align-items: center; }
+#svan-playground button.wide { width: 100%; margin: 2px 0 6px; padding: 5px; border-color: #f2b632; }
+#svan-playground .good { color: #7be08a; font-weight: bold; }
+#svan-playground .bad { color: #ff7a6b; font-weight: bold; }
 `;
 
 type Attrs = Record<string, string>;
@@ -86,6 +104,8 @@ export class PlaygroundPanel {
   private readonly root: HTMLDivElement;
   private readonly body: HTMLDivElement;
   private readonly readoutBox: HTMLDivElement;
+  /** Panel option: placing or swapping fuses like in a run. */
+  private fuse = false;
 
   constructor(private readonly ctl: PlaygroundController) {
     if (!document.getElementById(STYLE_ID)) {
@@ -157,9 +177,50 @@ export class PlaygroundPanel {
     gunSel.dataset.testid = 'playground-gun';
     sections.push(el('h3', {}, 'Gun'), el('div', { class: 'row' }, gunSel));
 
-    // Slots
-    sections.push(el('h3', {}, 'Barrel (left → right)'), ...this.slotRows('barrel', build.barrel));
-    sections.push(el('h3', {}, 'Magazine'), ...this.slotRows('magazine', build.magazine));
+    // Barrel
+    const bench = this.button(
+      'Open workbench: drag and drop  [B]',
+      () => this.ctl.openWorkbench(),
+      'playground-workbench',
+    );
+    bench.classList.add('wide');
+    sections.push(
+      el('h3', {}, 'Barrel'),
+      bench,
+      this.checkbox('Fuse on place / swap (like a run)', this.fuse, (on) => {
+        this.fuse = on;
+      }),
+      ...this.slotRows(build.barrel),
+    );
+
+    // Muzzle: piece + level per slot, then the stacked total
+    const levels = Array.from({ length: PANEL_MAX_TIER }, (_, i) => String(i + 1));
+    const pieces: [string, string][] = [
+      ['', '— empty —'],
+      ...d.muzzles.pieces.map((m): [string, string] => [m.id, m.name]),
+    ];
+    const muzzleRows = build.muzzle.map((slot, i) => {
+      const sel = this.select(pieces, slot?.id ?? '', (v) =>
+        this.ctl.setMuzzle(i, v ? { id: v, level: 1 } : null),
+      );
+      sel.classList.add('mod');
+      sel.dataset.testid = `playground-muzzle-${i}`;
+      if (slot) sel.title = muzzleDescription(d, slot.id, slot.level);
+      const lv = this.select(
+        levels.map((t) => [t, 'Lv ' + t]),
+        String(slot?.level ?? 1),
+        (v) => slot && this.ctl.setMuzzle(i, { id: slot.id, level: Number(v) }),
+      );
+      lv.disabled = !slot;
+      return el('div', { class: 'row' }, sel, lv);
+    });
+    const total = muzzleEffects(this.ctl.pipeline().muzzle);
+    sections.push(
+      el('h3', {}, 'Muzzle'),
+      ...muzzleRows,
+      el('div', { class: 'good' }, total.up.join(', ')),
+      el('div', { class: 'bad' }, total.down.join(', ')),
+    );
 
     // Core Tier
     const tiers = Array.from({ length: d.config.slots.maxCoreTier }, (_, i) => String(i + 1));
@@ -183,6 +244,21 @@ export class PlaygroundPanel {
       }
     }
     sections.push(el('h3', {}, 'Perks'), grid);
+
+    // Support perks: level 0..max
+    const support = this.ctl.support();
+    const sgrid = el('div', { class: 'grid2' });
+    for (const sp of d.supportPerks) {
+      const levels = Array.from({ length: sp.levels.length + 1 }, (_, i): [string, string] => [
+        String(i),
+        i === 0 ? 'off' : `Lv ${i}`,
+      ]);
+      const sel = this.select(levels, String(support[sp.id] ?? 0), (v) =>
+        this.ctl.setSupport(sp.id, Number(v)),
+      );
+      sgrid.append(el('span', { title: sp.description }, sp.name), sel);
+    }
+    sections.push(el('h3', {}, 'Support perks'), sgrid);
 
     // Reset and world
     sections.push(
@@ -234,47 +310,45 @@ export class PlaygroundPanel {
     this.body.replaceChildren(...sections);
   }
 
-  private slotRows(kind: SlotKind, slots: readonly (ModSlot | null)[]): Node[] {
+  private slotRows(slots: readonly (ModSlot | null)[]): Node[] {
     const d = this.ctl.data;
-    const mods = kind === 'barrel' ? d.barrelMods : d.magazineMods;
     const layout = this.ctl.layout();
-    const ops = this.ctl.operators();
-    const levels = Array.from({ length: d.config.slots.maxModLevel }, (_, i) => String(i + 1));
+    const pipeline = this.ctl.pipeline();
+    const tiers = Array.from({ length: PANEL_MAX_TIER }, (_, i) => String(i + 1));
+    const groups: [string, string][] = [['', '— empty —']];
+    for (const m of d.barrelMods) groups.push([m.id, `${m.name}  (${m.family})`]);
     const out: Node[] = [];
 
     slots.forEach((slot, i) => {
-      if (kind === 'barrel') {
-        const tag = barrelSlotTag(layout, i);
-        if (tag) out.push(el('div', { class: 'tag' }, tag));
-      }
-      const modSel = this.select(
-        [['', '— empty —'], ...mods.map((m): [string, string] => [m.id, m.name])],
-        slot?.id ?? '',
-        (v) => this.ctl.setSlot(kind, i, v ? { id: v, level: slot?.level ?? 1 } : null),
+      const tag = barrelSlotTag(layout, i);
+      if (tag) out.push(el('div', { class: 'tag' }, tag));
+      const def = slot ? d.barrelMods.find((m) => m.id === slot.id) : undefined;
+      const modSel = this.select(groups, slot?.id ?? '', (v) =>
+        this.ctl.setSlot(i, v ? { id: v, tier: 1 } : null, this.fuse),
       );
       modSel.classList.add('mod');
-      modSel.dataset.testid = `playground-${kind}-${i}`;
-      if (slot) modSel.title = modDescription(d, kind, slot.id, slot.level);
+      modSel.dataset.testid = `playground-barrel-${i}`;
+      if (slot) modSel.title = modDescription(d, slot.id, slot.tier);
+      if (def) modSel.style.borderColor = def.color;
 
-      const lvlSel = this.select(
-        levels.map((l) => [l, 'Lv ' + l]),
-        String(slot?.level ?? 1),
-        (v) => slot && this.ctl.setSlot(kind, i, { id: slot.id, level: Number(v) }),
+      const tierSel = this.select(
+        tiers.map((t) => [t, 'T' + t]),
+        String(slot?.tier ?? 1),
+        (v) => slot && this.ctl.setSlot(i, { id: slot.id, tier: Number(v) }, false),
       );
-      lvlSel.disabled = !slot;
+      tierSel.disabled = !slot || def?.family === 'fitting';
 
-      const up = this.button('↑', () => this.ctl.swap(kind, i, i - 1));
+      const up = this.button('↑', () => this.ctl.swap(i, i - 1, this.fuse));
       up.disabled = i === 0;
-      const down = this.button('↓', () => this.ctl.swap(kind, i, i + 1));
+      const down = this.button('↓', () => this.ctl.swap(i, i + 1, this.fuse));
       down.disabled = i === slots.length - 1;
 
-      const row = el('div', { class: 'row' }, modSel, lvlSel, up, down);
-      const op = kind === 'barrel' ? ops.find((o) => o.slot === i) : undefined;
-      if (op) {
-        const target = op.target === null ? null : slots[op.target];
-        const note = target ? `→ ${modName(d, 'barrel', target.id)}` : 'no target';
-        row.append(el('span', { class: 'dim', title: 'operator' }, note));
-      }
+      const row = el('div', { class: 'row' }, modSel, tierSel, up, down);
+      const k = pipeline.strength[i] ?? 1;
+      if (slot && def?.family !== 'fitting' && Math.abs(k - 1) > 1e-6)
+        row.append(
+          el('span', { class: k > 1 ? 'good' : 'bad', title: 'strength' }, `×${Math.round(k * 100) / 100}`),
+        );
       out.push(row);
     });
     return out;

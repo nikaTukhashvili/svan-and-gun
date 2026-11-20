@@ -1,0 +1,60 @@
+{
+  "minFanDeg": 6,
+  "floors": {
+    "damage": 0.25,
+    "fireRate": 0.5,
+    "range": 0.3,
+    "bulletSpeed": 0.3
+  },
+  "pieces": [
+    {
+      "id": "flared_muzzle",
+      "name": "Flared Muzzle",
+      "color": "#c8a46a",
+      "base": { "bullets": 1, "spreadDeg": 8, "rangePct": -0.15 },
+      "perLevel": { "bullets": 1, "spreadDeg": 4, "rangePct": -0.07 }
+    },
+    {
+      "id": "scatter_mouth",
+      "name": "Scatter Mouth",
+      "color": "#d27b4f",
+      "base": { "bullets": 2, "damagePct": -0.3, "rangePct": -0.25 },
+      "perLevel": { "bullets": 2, "damagePct": -0.1, "rangePct": -0.08 }
+    },
+    {
+      "id": "choke",
+      "name": "Choke",
+      "color": "#7fa7c9",
+      "base": { "spreadPct": -0.5, "rangePct": 0.2, "fireRatePct": -0.1 },
+      "perLevel": { "spreadPct": -0.15, "rangePct": 0.15, "fireRatePct": -0.04 }
+    },
+    {
+      "id": "compensator",
+      "name": "Compensator",
+      "color": "#9ec27a",
+      "base": { "fireRatePct": 0.2, "spreadDeg": 6 },
+      "perLevel": { "fireRatePct": 0.15, "spreadDeg": 3 }
+    },
+    {
+      "id": "heavy_crown",
+      "name": "Heavy Crown",
+      "color": "#b56b6b",
+      "base": { "damagePct": 0.25, "bulletSpeedPct": -0.2 },
+      "perLevel": { "damagePct": 0.2, "bulletSpeedPct": -0.08 }
+    },
+    {
+      "id": "rifled_crown",
+      "name": "Rifled Crown",
+      "color": "#8e9bd8",
+      "base": { "bulletSpeedPct": 0.3, "rangePct": 0.15, "damagePct": -0.1 },
+      "perLevel": { "bulletSpeedPct": 0.2, "rangePct": 0.1, "damagePct": -0.04 }
+    },
+    {
+      "id": "wild_muzzle",
+      "name": "Wild Muzzle",
+      "color": "#c77fd0",
+      "base": { "critChance": 0.15, "spreadDeg": 15 },
+      "perLevel": { "critChance": 0.1, "spreadDeg": 6 }
+    }
+  ]
+}

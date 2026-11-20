@@ -51,7 +51,7 @@ To make that true in practice, files in `systems/` and `core/` never `import Pha
 | `player:levelUp` | `{level}` | ProgressionSystem | LevelUpScene (queued) |
 | `player:scrap` | `{scrap, toNext}` | ProgressionSystem | HUD |
 | `weapon:fired` / `weapon:reload` / `weapon:reloaded` | `{ammo, magSize}` | WeaponSystem | HUD, magazine mods (reload = started, reloaded = magazine full) |
-| `mod:applied` | `{modId, slot, level}` | CardDraw | HUD slot icons |
+| `mod:applied` | `{modId, slot, tier, fused}` | Level-up pick | HUD slot icons, fusion feedback |
 | `enemy:killed` | `{type, elite, x, y, byStatus}` | Enemy / StatusEffectSystem | DropSystem, ScoreSystem, poison spread, Scavenger |
 | `timeline:event` | `{type, at}` | SpawnDirector | HUD warnings, audio |
 | `boss:spawned` / `boss:phase` / `boss:dead` | `{phase, hpLeft}` | Boss | HUD boss bar, camera |
@@ -67,7 +67,7 @@ Code is split by role: scenes draw and take input, systems hold the rules, entit
 ```
 svan-and-gun/
   public/
-    data/            guns.json, barrelMods.json, magazineMods.json, enemies.json,
+    data/            guns.json, barrelMods.json, supportPerks.json, enemies.json,
                      boss.json, timeline.json, buffs.json, cards.json, drops.json, config.json
     maps/            level1.json (bounds, player start, tower, obstacles)
   src/
@@ -77,7 +77,7 @@ svan-and-gun/
                      MarketScene, HighScoreScene, SettingsScene
     entities/        Player, Enemy, Bullet, Pickup, Boss, Obstacle
     systems/         WeaponSystem, ModPipeline, StatusEffectSystem,
-                     SpawnDirector, EnemyAI, ProgressionSystem, CardDraw,
+                     SpawnDirector, EnemyAI, ProgressionSystem, CardDraw, Fusion,
                      DropSystem, RunTimer, ScoreSystem, SaveSystem, MarketSystem
     data/            zod schemas, types.ts, DataRegistry (loads + validates JSON)
     core/            EventBus, ObjectPool, RNG (seeded), math helpers
@@ -157,122 +157,73 @@ A trigger pull becomes bullets in three steps: the Core builds a base shot, barr
 
 - State: `ammo`, `magSize`, `reloadTimer`, `fireCooldown`. Firing is allowed when `ammo > 0` and the cooldown is done.
 - Reload time is `gun.reload / reloadSpeed`; shots per second is `gun.shotsPerSecond × fireRate`. Higher stat values are always better.
-- Reload starts on R or when the magazine hits 0. Magazine mods subscribe to hooks: `onReloadStart` (Shock Reload), `onMagazineEmpty` (Grenade Mag), `onLastRound` (Last Round), `onKill` (Scavenger). Extended Mag and Quick Hands simply change stats.
+- Reload starts on R or when the magazine hits 0. Support perks (were magazine mods) hook into these events: reload start (Shock Reload), magazine empty (Grenade Mag), last round (Last Round), kill (Scavenger). Extended Mag and Quick Hands simply change stats. `buildPipeline` turns `RunState.support` levels into `WeaponMods` and `SupportEffects`.
 
-### ModPipeline: barrel slots
+### Fusion and ModPipeline: the barrel (2026-11-20)
 
-Each barrel mod declares which hooks it uses:
+Two pure modules in `src/systems`:
+
+- **`fusion.ts`**: the barrel rules. `fuseResult(a, b)` (tiers add; same module, element + element → hybrid; a hybrid grows only from the same hybrid), `place(build, layout, slot, module)` (place / fuse / replace, then cascade), `swapAndFuse`, `previewPlace` / `previewSwap` (the same logic on a copy, for the level-up preview), `tierParams(def, tier)` (base + perTier × (tier − 1), counts rounded), `neighbours(layout, i)` (same chain only).
+- **`modPipeline.ts`**: turns the barrel into behaviour.
 
 ```typescript
-interface ShotSpec {
-  angle: number; speed: number; range: number; damage: number;
-  pierce: number; knockback: number; spreadDeg: number;
-  crit: boolean;      // x2 damage (Scrap SMG's 10th bullet)
-  volleyId: number;   // same for all pellets of one trigger pull
+interface ModSlot { id: string; tier: number }          // tier = copies fused in, no cap
+interface SlotMod { slot; chain; id; tier; p /* numbers at tier */; k /* strength */; critOnly }
+interface Pipeline {
+  layout; barrel: SlotMod[]; fittings: FittingInfo[]; strength: number[]; // per slot, for the UI
+  weaponMods; support: SupportEffects; deathBlast: { damage; radius } | null;
 }
-
-interface BarrelMod {
-  id: string;
-  level: number;                          // 1..3
-  stats?: StatMods;                       // passive gun stats, e.g. Heavy Slug's -15% fire rate
-  onFire?(shots: ShotSpec[]): ShotSpec[]; // Twin Shot, Long Rifling, Heavy Slug, Piercing Bore
-  onHit?(ctx: HitContext): HitResult;     // Ricochet, Split Shot, Fire, Poison, Lightning
-}
-// HitResult lists what the scene should do: child ShotSpecs to spawn, statuses to apply, chain targets.
 ```
 
-1. **Base shot:** the Core makes its `ShotSpec[]` (1 for Long Gun and SMG, 6 pellets for Double Barrel, with spread).
-2. **onFire pass:** for slot 1 to 4 in order, `shots = mod.onFire(shots)`. Twin Shot doubles the list; Long Rifling raises speed and range.
-3. **Spawn:** one pooled `Bullet` per spec. Each bullet stores `hitChain`, the list of `onHit` mods from all slots, in slot order, plus `fromSlot = 0`.
-4. **onHit pass:** on overlap, run the bullet's `hitChain` in order. A mod that creates new bullets (Split Shot shards, the Ricochet bounce) gives them only the mods from slots after its own (`fromSlot = mySlot + 1`).
+1. **Strength:** each fitting multiplies `k` of its tiered neighbours in the same chain (`1 + left` / `1 + right`). The SMG's last slot gets ×critChamberMult and `critOnly`.
+2. **Base shot:** the Core makes its `ShotSpec[]` and `applyOnFire` sets each shot's chain (Double Barrel alternates by `volleyId`).
+3. **onFire:** Twin Shot, Long Rifling, Piercing Bore and Heavy Slug change the shots of their chain, scaled by `k`.
+4. **onHit:** `HitResolver.onHit` runs every on-hit module of the bullet's chain (elements, hybrids, Split Shot). `onStop` runs Ricochet when the bullet would stop. Slot order plays no part.
+5. **Muzzle:** `buildPipeline` adds up the muzzle (`totalMuzzle`) into `Pipeline.muzzle` and `weaponMods.muzzle` (see below); `computeWeaponStats` applies it to the Core's numbers.
+6. **Hybrids:** Plasma and Blight Arc call `StatusEffectSystem.chainLightning` with an `onReach` callback that burns / poisons every enemy reached; Brimstone burns and poisons, and `StatusEffectSystem.deathBlast` (synced from the pipeline each frame) bursts a burning, poisoned enemy on death. Bursts are queued in `status.blasts` for the effects layer.
 
-That rule gives the designed behaviour: Split Shot in slot 1 and Ricochet in slot 2 makes shards that bounce, while the reverse order makes a bounced bullet that splits again into shards that do not bounce.
+**Resolution rules**
 
-**Resolution rules** (these settle the cases the GDD leaves open)
-
-- The `hitChain` runs on every enemy a bullet hits, including each enemy a piercing bullet passes through.
-- Ricochet triggers only when the bullet would otherwise be destroyed (its pierce is used up). The bounce is a new child bullet aimed at the nearest enemy not yet hit by this bullet's family.
+- Loop guard (replaces the old "children only get later slots" rule): child bullets (generation ≥ 1) never split and never bounce. Ricochet bounces reuse the original bullet. The generation cap and children-per-hit cap stay as safety nets.
+- Ricochet triggers only when the bullet would otherwise be destroyed (its pierce is used up), and aims at the nearest enemy not yet hit by this bullet.
 - A child bullet keeps its parent's damage multiplier from the mod that made it (shards 30%, lightning 50%) and its parent's `volleyId`.
-- Generations are capped: the trigger-pull bullet is generation 0 and nothing above generation 2 is spawned. With 4 slots the slot rule already limits depth; the cap is a safety net.
-- Pellet rule: on-hit mods trigger at most once per enemy per `volleyId`. Each enemy stores the last `volleyId` that triggered on-hit mods on it; later pellets of the same volley deal damage only.
-- Swapping two barrel slots rebuilds the pipeline; bullets already in flight keep the chain they were fired with.
-- Defence is subtracted from bullet, shard, ricochet and lightning damage (minimum 1). Status ticks and explosions ignore it.
-
-### Elements: StatusEffectSystem
-
-Element mods are `onHit` mods that call StatusEffectSystem. Effects tick every 0.5 s. Elements never read each other; an enemy can carry all three at once.
-
-| Element | Stored on enemy | On hit | On tick / death |
-| --- | --- | --- | --- |
-| Fire | `burnStacks: number`, `burnTimer` | `stacks = min(stacks + 1, maxStacks)`; timer reset to 3 s | Tick: `stacks × 3 dps × 0.5 s` damage |
-| Poison | `poison?: {dps, timeLeft, canSpread}` | If none: apply (8 dps, 6 s, `canSpread: true`); else only reset `timeLeft` | Tick: damage. On death with `canSpread`: apply to up to 2 nearest enemies within 3 units with `canSpread: false` |
-| Lightning | nothing | Find up to N nearest enemies within 4 units not yet hit by this chain; deal 50% damage to each; draw a short-lived line | None |
-
-Status damage ignores defence and counts as kills for scrap, score and Scavenger.
-
-## Enemies, spawn director and boss
-
-All regular enemies share one pooled `Enemy` class; behaviour comes from a small state machine picked by the `behaviour` field in `enemies.json`. The SpawnDirector reads `timeline.json` and keeps the enemy count on schedule.
-
-### Enemy behaviours
-
-| Behaviour | States | Notes |
-| --- | --- | --- |
-| `swarm` (Kaji Imp) | chase | Steer straight at the player plus a small separation force from neighbours |
-| `flank` (Ali) | circle → windup (0.4 s) → dash → recover | Circles at about 4 units, then dashes along the locked direction |
-| `charge` (Ochopintre) | approach → windup (0.8 s, flashes) → charge → stunned (0.6 s) | Charge goes in a straight line; hitting an obstacle ends it |
-| `caster` (Rokapi) | keep distance (6–8 units) → cast | Throws a slow projectile that applies −30% move speed for 2 s |
-| `tank` (Devi Brute) | chase | Has `defence` and high knockback resistance |
-
-- Movement: steering (seek + separation), with Arcade colliders against obstacles. No pathfinding grid in Phase 1; enemies slide around rocks and houses.
-- Separation is checked only against neighbours in the same and adjacent spatial-hash cells to keep it cheap.
-- Elites reuse the same entry with `elite: true`: HP ×5, defence +1, scale ×1.4, outline, guaranteed chest drop.
-- Scaling: `hp = baseHp × (1 + 0.12 × minutesElapsed)` at spawn time.
-
-### SpawnDirector
-
-- Each frame it compares the alive count to the current timeline segment's `maxAlive` and spawns from that segment's weighted enemy list at `spawnPerSecond`.
-- Spawn point: a random angle on a ring just outside the camera view, clamped to the map and rejected if inside an obstacle.
-- Timeline events (`elite`, `swarmRing`, `calm`, `bossWarning`, `boss`) fire once at their time. `swarmRing` spawns a full circle of Kaji around the player.
-- During the boss, `maxAlive` is multiplied by `bossSpawnFactor` (0.5).
-- `maxAlive` only gates new spawns. Events (`elite`, `swarmRing`, boss summons) ignore it and are limited only by the enemy pool (150). During `calm`, spawning stops and living enemies stay.
-
-### Boss: Devi Chieftain
-
-`Boss` is its own entity with a phase state machine driven by HP thresholds in `boss.json`.
-
-| Phase | Trigger | Attack loop |
-| --- | --- | --- |
-| 1 | HP 100–67% | walk → slam (shockwave ring, expanding circle hitbox) → cooldown |
-| 2 | HP 67–34% | adds boulder throw (target point marked 1 s ahead, leaves a rubble obstacle for 10 s) and Kaji summons |
-| 3 | HP 34–0% | shorter cooldowns, speed +30%, double slam |
-| Enrage | 180 s after spawn | +50% damage |
-
-- Phase changes and death emit events (`boss:phase`, `boss:dead`) for the HUD and camera shake.
-- `boss:dead` emits `run:ended {result:'victory'}` after a 2 s "tower retaken" moment.
-
-## Progression: XP, card draw and buffs
+- Pellet rule: on-hit modules trigger at most once per enemy per `volleyId`.
+- Any build change rebuilds the pipeline; bullets in flight read the new pipeline on their next hit.
+- Defence is subtracted from bullet, shard, ricochet and lightning damage (minimum 1). Status ticks, explosions and Brimstone bursts ignore it.
 
 Scrap fills a level bar; each level opens LevelUpScene with 3 cards from CardDraw. CardDraw builds the list of valid cards first and only then picks, so it can never offer an invalid card.
+
+
+### Muzzle (2026-11-21)
+
+`src/systems/muzzle.ts` (pure): `RunBuild.muzzle: (MuzzleSlot | null)[]` with `MuzzleSlot { id; level }` (no cap). The slot count comes from `guns.json > muzzleSlots`.
+
+- `previewMuzzle` / `placeMuzzle(muzzle, i, id)`: empty slot → `fit` (level 1); the same piece → `upgrade` (+1 level); another piece → `replace`. `moveMuzzle` moves or swaps and never merges.
+- `muzzleStats(def, level)`: base + perLevel × (level − 1), bullets rounded. `totalMuzzle` adds every fitted piece.
+- `muzzleWeaponMods(data, totals)`: the totals as multipliers with the floors from `muzzles.json` (damage, fire rate, range, bullet speed), extra bullets, spread (flat degrees, then ×(1 + spreadPct)), crit chance, and `minFanDeg` when bullets were added.
+- `computeWeaponStats`: pellets = gun pellets + extra bullets (one volley, so the pellet rule holds); spread at least `minFanDeg` when there is more than one pellet; `WeaponStats.critChance` rolls on the seeded RNG per trigger pull, on top of `critEveryN`.
+- Muzzle cards: `Card { type: 'muzzle'; muzzleId; owned }`, weight `cards.typeWeights.muzzle` shared by all pieces; `applyCard` needs the muzzle slot.
+- `guns.json > startingSupport` seeds `RunState.support` at run start (Double Barrel: Grenade Mag 1).
 
 ### Levelling
 
 - `scrapToNext(level) = xpBase + xpStep × (level − 1)` with `xpBase = 5`, `xpStep = 10` from `config.json` (5, 15, 25…). `level` is the player's current level.
 - Several level-ups from one big pickup are queued and shown one after another.
-- Slot unlock levels live in `config.json` (all slots open at level 1 since 2026-11-20; the code still supports later unlocks).
+- Barrel slot unlock levels live in `config.json` > slots.barrelUnlockLevels (4 open at level 1, then levels 4, 7, 10, 13).
 
+
+**Paths (2026-11-21).** `cards.json > paths` lists the level-up paths and the card types each holds. `cardType(card)` maps a card to its type (module cards by family, Tinker = `tinker`), `pathOf(data, card)` to its path, and `drawCards(..., path)` filters the weighted pool to that path before picking. GameScene keeps `levelPath` (null until the player picks; a hand queued by the test hook skips the step), and `LevelUpController` exposes `paths()`, `path()` and `choosePath(id)`.
 ### CardDraw algorithm
 
 1. Build candidates from the RunState:
-   - a new barrel mod for each mod not owned, if a barrel slot is open, or as a `replace` card if all are full;
-   - the same for magazine mods;
-   - an upgrade for each owned mod below level 3;
+   - a module card for every element, grey module and fitting (always valid: tiers have no cap, and a full barrel can still fuse or replace). Hybrids are never offered. A module that would fuse with one in the barrel weighs `cards.fusesWithOwnedMult` times more and is marked `fuses`;
+   - a support perk card for each support perk below its max level;
    - a Core Tier card if below Tier V;
-   - run stat cards (always valid, used as filler).
-2. Pick 3 distinct candidates using the type weights in `cards.json`; fill with run stat cards if fewer than 3 are valid.
-   Type weights are split evenly across that type's cards. A Tinker card (2 random level-ups for owned mods, resolved at draw time) joins with the weight of one perk when any owned mod is below level 3.
-3. For each run stat card picked, roll a rarity (common, rare, epic; weights from `cards.json`, shifted slightly towards rare with level) to set its value. Mod and Core Tier cards have no rarity.
-4. Reroll repeats steps 2–3 and uses one charge from `RunState.rerolls`.
+   - run stat cards (always valid).
+2. Pick 3 distinct candidates using the type weights in `cards.json` (element, grey, fitting, coreTier, runStat, supportPerk), each split evenly across that type's cards. A Tinker card (random +1 tiers for modules in the barrel, resolved at draw time as slot + module id) joins with the weight of one perk when the barrel has a tiered module.
+3. For each run stat card picked, roll a rarity (common, rare, epic; weights from `cards.json`, shifted slightly towards rare with level) to set its value. Module, support and Core Tier cards have no rarity.
+4. A module card is applied with the slot the player chose: `fusion.place` (place / fuse with cascade / replace).
+5. Reroll repeats steps 2–3 and uses one charge from `RunState.rerolls`.
 
 The RNG is seeded per run (seed stored in RunState), so a bug report can include the seed and the same draws can be replayed in a test.
 
@@ -299,9 +250,10 @@ Every tunable value is in a JSON file under `public/data`, checked by a zod sche
 | File | Holds | Key fields |
 | --- | --- | --- |
 | `config.json` | Global numbers | XP curve (xpBase, xpStep), crit multiplier, map size, invulnerability time, slot unlock levels, boss spawn time |
-| `guns.json` | 3 cores | damage, shotsPerSecond, magSize, reload, spreadDeg, range, bulletSpeed, pellets, trait, tierBonus |
-| `barrelMods.json` | 9 barrel mods | id, hooks, stats, values per level (1–3) |
-| `magazineMods.json` | 6 magazine mods | id, hooks, values per level |
+| `guns.json` | 3 cores | damage, shotsPerSecond, magSize, reload, spreadDeg, range, bulletSpeed, pellets, trait, tierBonus, barrel (slots, chains, critChamberMult), muzzleSlots, startingSupport |
+| `barrelMods.json` | 21 barrel modules: 4 elements, 6 hybrids, 6 grey, 5 fittings | id, family, colour, element / parents, base + perTier numbers (fittings: left, right) |
+| `muzzles.json` | 7 muzzle pieces, minFanDeg, floors | id, name, colour, base + perLevel stats (bullets, spreadDeg, spreadPct, rangePct, damagePct, fireRatePct, bulletSpeedPct, critChance) |
+| `supportPerks.json` | 6 support perks (were magazine mods) | id, description, values per level (1–3) |
 | `enemies.json` | 5 enemy types | hp, speed, contactDamage, defence, behaviour, behaviour params, scrapDrop, silverChance |
 | `boss.json` | Devi Chieftain | hp, phases (threshold, attacks, cooldowns), enrageAfter |
 | `timeline.json` | Level 1 schedule | segments (from, to, maxAlive, spawnPerSecond, weights) and events |
@@ -393,9 +345,9 @@ Rules are unit tested without Phaser; the running game is checked with Playwrigh
 
 **Unit tests (Vitest), first targets**
 
-- ModPipeline: slot order (Split before Ricochet vs Ricochet before Split), Twin Shot counts, pellet chance scaling
+- Fusion: tiers add, hybrids, cascade priority, chain gap, replace, no-cap feeding; ModPipeline: fittings, twists, hybrids, loop guard, Twin Shot counts
 - StatusEffectSystem: burn stacking and cap, poison no-stack and single spread, lightning never hits the same enemy twice
-- CardDraw: never offers a duplicate mod, a full slot without a replace card, or a mod above level 3 (property test over many seeds)
+- CardDraw: every offered card is valid, nothing lands in a locked slot, support perks stop at their max (property test over many seeds)
 - Damage formula, XP curve, score, silver, buff cost and refund
 - SaveSystem: round trip, migration, broken-save fallback
 - Data: every JSON file passes its schema (runs in CI)

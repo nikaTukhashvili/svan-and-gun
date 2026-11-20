@@ -19,17 +19,17 @@
     "minDamage": 1,
     "critMultiplier": 2,
     "maxFrameDeltaMs": 50,
-    "statusTickSec": 0.5
+    "statusTickSec": 0.5,
+    "maxChillSlow": 0.7,
+    "freezeImmunitySec": 3
   },
   "xp": {
     "base": 5,
     "step": 10
   },
   "slots": {
-    "barrelUnlockLevels": [1],
-    "magazineUnlockLevels": [1],
+    "barrelUnlockLevels": [1, 1, 1, 1, 4, 7, 10, 13],
     "maxTotalSlots": 12,
-    "maxModLevel": 3,
     "maxCoreTier": 5
   },
   "enemies": {

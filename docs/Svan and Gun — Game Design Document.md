@@ -16,7 +16,7 @@ Svan and Gun is a top-down survivor roguelike: one stubborn Svan, a homemade gun
 
 **Design pillars**
 
-1. **The gun is the build.** Every upgrade goes into a physical gun part (Core, Magazine, Barrel), not an abstract weapon list.
+1. **The gun is the build.** Every upgrade goes into a physical gun part (the Core and the Barrel), not an abstract weapon list.
 2. **Stubborn, not helpless.** The player aims, reloads and moves; skill matters more than in auto-fire survivors.
 3. **Svaneti, its folklore and its towers.** Enemies, places and items come from Georgian mythology and Svan culture.
 4. **Short runs, long progress.** Each run pays silver for permanent upgrades at the market.
@@ -91,7 +91,7 @@ There are two level types, and they share the same gun, upgrades and enemies. Ph
 
 ## Player character
 
-The Svan has a small set of base stats. Market buffs raise them permanently, and level-up choices raise them for one run only. All numbers below are first values for tuning.
+The Svan has a small set of base stats. Market buffs raise them permanently, and items (see Gear) raise them for one run only. All numbers below are first values for tuning.
 
 | Stat | Base value | What it does | Raised by market? |
 | --- | --- | --- | --- |
@@ -127,7 +127,7 @@ The Svan has a small set of base stats. Market buffs raise them permanently, and
 
 ## Gun system
 
-The player picks one of three guns at the start of a run and keeps it to the end. Each gun has three parts. The **Core** sets base stats and how the gun feels. The **Magazine** holds ammo and changes reloading. The **Barrel** has 4 slots that change each bullet. Level-ups fill and upgrade the slots.
+The player picks one of three guns at the start of a run and keeps it to the end. Each gun has two parts. The **Core** sets base stats and how the gun feels. The **Barrel** holds coloured modules that change each bullet; modules placed next to a match **fuse** into a stronger one. The **Muzzle** at the end shapes the shot with trade-offs. Level-ups bring new modules, support perks and Core Tiers.
 
 ### Starting guns (Cores)
 
@@ -148,52 +148,112 @@ The Core itself can be improved during a run with **Core Tier** upgrades (Tier I
 
 **Pellet rule.** All pellets from one trigger pull are one volley. On-hit mods (elements, Ricochet, Split Shot) trigger at most once per enemy per volley, on the first pellet that hits it. The other pellets deal damage only. This stops the Double Barrel from applying effects 6× as often as the other guns, with no hidden chance rolls.
 
-### Barrel: length and twist depend on the gun
+### Barrel: fusion (decided 2026-11-20, replaces slot order, operators, levels and the magazine)
 
-Every gun uses the same mods and rules, but its barrel is shaped differently (`guns.json` > barrel). No gun has more than 12 slots in total.
+The barrel is a row of slots. Each slot holds one **module**. Where a module sits does not change what it does to a bullet; what matters is **what it sits next to**: matching neighbours fuse, and fittings change their neighbours.
 
-| Gun | Barrel | Magazine | Twist |
-| --- | --- | --- | --- |
-| Long Gun | 6 | 2 | **Muzzle:** the last barrel slot works ×2 |
-| Double Barrel | 6, as two chains of 3 | 2 | **Two barrels:** trigger pulls alternate between the left and right chain |
-| Scrap SMG | 3 + crit chamber | 3 | **Crit chamber:** the last slot works only on crit bullets (every 10th), ×3 |
+**Barrel length and twist depend on the gun** (`guns.json` > barrel). No gun has more than 12 slots. Slots open with level (`config.slots.barrelUnlockLevels`: 4 at the start, then one more at levels 4, 7, 10 and 13), so space stays scarce and growth stays visible.
 
-
-- All 4 slots are open from the start of a run. Locking slots behind levels forced the barrel order on the player; with every slot open, the order is a plan the player builds and then upgrades.
-- Any barrel mod fits any slot, but each mod can sit in only one slot: never two of the same mod. Mods apply in slot order, 1 to 4, and **a bullet created by a mod only carries the mods in later slots**. So order matters:
-  - Split Shot (slot 1) then Ricochet (slot 2): the shards bounce.
-  - Ricochet (slot 1) then Split Shot (slot 2): the bounced bullet splits again, but its shards do not bounce.
-  - Split Shot then Ember Shot: the shards burn too. Ember Shot then Split Shot: only the main bullet burns.
-  - Order does not matter between mods that only change stats (Twin Shot, Long Rifling, Piercing Bore, Heavy Slug).
-- A new mod goes into the lowest open slot. On the level-up screen the player can swap any two filled barrel slots for free, so order is a choice and not an accident of pick order.
-- Taking the same mod again upgrades it (levels 1–3) instead of using a new slot.
-- When every slot is full, a new mod can replace an old one. The new mod starts at level 1 in that slot.
-
-Phase 1 has three elements: Fire, Poison and Lightning. Each is a barrel mod. They work independently: an enemy hit by two elements takes both effects, but they do not combine or mix.
-
-| Barrel mod | Effect at level 1 | Upgrade per level |
+| Gun | Barrel | Twist |
 | --- | --- | --- |
-| Ember Shot (Fire) | Each hit adds a burn stack: 3 damage per second for 3 s. Stacks up to 5; each new hit refreshes the timer | +2 max stacks |
-| Venom Shot (Poison) | Poisons the enemy once: 8 damage per second for 6 s. Does not stack; another hit only refreshes the timer. When a poisoned enemy dies, the poison spreads once to up to 2 enemies within 3 units (spread poison does not spread again) | +1 spread target |
-| Thunder Spark (Lightning) | Each hit chains to 2 more enemies within 4 units for 50% damage | +1 chain |
-| Twin Shot | Fires 2 bullets, each deals 65% damage | +1 bullet at level 3 |
+| Long Gun | 8 | None in the barrel: its strength is 3 muzzle slots (see Muzzle). The old "last slot ×2" twist is gone |
+| Double Barrel | 8, as two halves of 4 | **Two barrels:** trigger pulls alternate between the halves; nothing fuses or boosts across the gap |
+| Scrap SMG | 6 + crit chamber | **Crit chamber:** the last slot works only on crit bullets (every 10th), ×3 |
+
+**Module families**
+
+| Family | Modules | Fuses with |
+| --- | --- | --- |
+| Element (colour) | Ember Shot (fire, red), Venom Shot (poison, green), Thunder Spark (lightning, yellow), Frost Shot (frost, blue; added 2026-11-21) | The same element; or a different element, making their hybrid |
+| Hybrid (mixed colour) | Plasma = fire + lightning (orange), Brimstone = fire + poison (amber), Blight Arc = poison + lightning (teal), Steam = fire + frost (pale), Frostbite = poison + frost (violet), Hailstorm = lightning + frost (ice blue) | Only the same hybrid (its parent elements do not feed it). Never offered as a card: only made by fusing |
+| Grey | Twin Shot, Ricochet, Long Rifling, Piercing Bore, Heavy Slug, Split Shot | Only the same module |
+| Fitting (directional) | Booster ▶, ◀ Booster, ◀ Brace ▶, Overcharger, Siphon | Never fuses |
+
+**Tiers and fusing**
+
+- A module's **tier is how many copies are fused into it**. A new card is tier 1. There is no cap.
+- Fusing **adds tiers**: Fire 2 + Fire 1 = Fire 3; Fire 3 + Thunder 2 = Plasma 5; Plasma 5 + Fire 1 = Plasma 6. Copies are never wasted.
+- Numbers grow with tier by a formula per module: value = base + perTier × (tier − 1) (`barrelMods.json` > base, perTier). Counts (chains, bounces, shards, bullets, stacks) are rounded.
+- Why no cap and why tiers add: with "two equal tiers make the next tier, max III" a Tier III module needed 4 copies and spare slots to build the half-made parts, so in a full barrel the last slots could never max out. Feeding a copy straight onto a module needs no spare slot.
+
+**Placing and moving** (Colossatron-style drag and drop, revised 2026-11-20 after playtest)
+
+- The player **drags** a module card onto a barrel slot (clicking the card, then a slot or its number key, also works).
+- An empty slot takes it. On a filled slot the module is **inserted**: the modules on one side slide one slot towards the nearest empty slot in the same half (right first, never into a locked slot). A drop never upgrades a module by itself, so the same module dropped elsewhere stays a separate copy.
+- Matches that end up **side by side merge at once**, shown step by step with a flash. Merges keep going while a match is next to the result (a **cascade**): same module first, then left before right. Example: `[Fire 1][ ][Thunder 1]` + Fire into the middle → Fire 2 → Plasma 3. A slide that brings two matches together merges them too.
+- When a barrel half is full, a drop feeds a matching module in place, or else **replaces** the module there (asks for a second click).
+- Dragging a module inside the barrel moves it (or swaps it with the module there); matches brought together merge.
+- While dragging, the slot under the pointer shows exactly what will happen.
+
+**Fittings** multiply the strength of their neighbours in the same half of the barrel. A fitting next to an empty slot or another fitting does nothing.
+
+| Fitting | Left neighbour | Right neighbour |
+| --- | --- | --- |
+| Booster ▶ | — | +40% |
+| ◀ Booster | +40% | — |
+| ◀ Brace ▶ | +20% | +20% |
+| Overcharger | +100% | −50% |
+| Siphon | −40% | +80% |
+
+**Modules at tier 1** (numbers from `barrelMods.json`; on-hit effects follow the pellet rule)
+
+| Module | Tier 1 | Each extra tier |
+| --- | --- | --- |
+| Ember Shot (fire) | Each hit adds a burn stack: 3 damage per second for 3 s, up to 5 stacks | +2 max stacks |
+| Venom Shot (poison) | Poisons for 8 damage per second for 6 s (does not stack); on death it spreads once to 2 enemies within 3 units | +1 spread target |
+| Thunder Spark (lightning) | Each hit chains to 2 more enemies within 4 units for 50% damage | +1 chain |
+| Frost Shot (frost) | Each hit adds a chill stack: −10% speed per stack for 2 s, up to 5. At 5 stacks the enemy **freezes** for 1 s (no movement, no attacks, harmless to touch) and takes +30% hit damage while frozen (shatter). After a freeze it cannot freeze again for 3 s (`config.combat.freezeImmunitySec`); chill never slows by more than 70% (`maxChillSlow`). The boss is slowed but never frozen | +2% slow, +0.2 s freeze, +10% shatter |
+| Plasma (fire + lightning) | Chains to 2 enemies for 60% damage; every enemy it reaches burns (4 per second, 3 s) | +1 chain, +1.5 burn |
+| Brimstone (fire + poison) | Hits burn (4/s) and poison (9/s); an enemy that dies burning and poisoned bursts for 20 damage in 2.5 units | +1.5 burn, +3 poison, +8 burst |
+| Blight Arc (poison + lightning) | Chains to 2 enemies for 60% damage and poisons every enemy it reaches (9/s, 6 s) | +1 chain, +3 poison |
+| Steam (fire + frost) | Burns (4/s) and chills (freezes at 4 stacks); an enemy that freezes bursts in steam for 25 damage in 2.5 units | +1.5 burn, +10 burst |
+| Frostbite (poison + frost) | Poisons (9/s, 6 s) and chills; poison deals ×2 damage to chilled or frozen enemies | +3 poison, +0.25 multiplier |
+| Hailstorm (lightning + frost) | Chains to 2 enemies for 60% damage and chills every enemy it reaches (freezes at 4 stacks) | +1 chain, +2% slow |
+| Twin Shot | Fires 2 bullets at 65% damage each | +1 bullet every 2 tiers |
 | Ricochet | Bullet bounces to 1 nearby enemy | +1 bounce |
 | Long Rifling | Bullet speed +50%, range +30% | +20% speed |
-| Piercing Bore | Bullet passes through +1 enemy | +1 pierce |
+| Piercing Bore | Passes through +1 enemy | +1 pierce |
 | Heavy Slug | Damage +40%, fire rate −15%, more knockback | +15% damage |
 | Split Shot | On hit, splits into 3 shards at 30% damage | +1 shard |
-| Amplifier (operator) | The mod to its right works ×2 | ×2.5, ×3 |
-| Hammer Spring (operator) | The mod to its right works only on every 4th shot, ×3 | every 3rd, then ×4 |
-| Death Trigger (operator) | The mod to its right triggers only when the hit kills, ×3 | ×4, ×5 |
-| Echo Chamber (operator) | The mod to its right triggers again 0.5 s later at ×0.5 | ×0.75, then ×1 after 0.4 s |
 
-**Operators** change only the slot directly to their right, inside the same chain. Next to an empty slot, another operator, or the end of a chain they do nothing, so operators never stack. Example: `Fire | Amplifier | Lightning`: the target burns normally and lightning chains to 4 enemies instead of 2. Death Trigger never affects onFire mods (Twin Shot, Long Rifling, Piercing Bore, Heavy Slug), because a shot has not killed anything yet when it fires.
+- **No slot order.** Every module applies to every bullet of its barrel half. Loop guard: shards from Split Shot carry element and hybrid effects but never split or bounce again (the bullet caps still apply).
 
-### Magazine: 2 slots
+### Muzzle (decided 2026-11-21)
 
-- Both slots are open from the start of a run. The upgrade and replace rules are the same as the barrel's.
+Every gun ends in a few **muzzle slots**. A muzzle piece shapes the shot (bullet count, spread, range, speed) and always has an **upside and a downside**. All muzzle pieces on a gun **stack** on every shot. Dragging a muzzle card onto a piece of the **same type** upgrades it one level instead of taking another slot (Flared Muzzle → Flared Muzzle II); there is no fusing between muzzles.
 
-| Magazine mod | Effect at level 1 | Upgrade per level |
+| Gun | Muzzle slots |
+| --- | --- |
+| Long Gun | 3 |
+| Double Barrel | 2. Makes up for it with a built-in **Grenade Mag** (level 1 from the start, see Support perks) |
+| Scrap SMG | 3 |
+
+First muzzle pieces (numbers to tune):
+
+| Muzzle | Upside | Downside |
+| --- | --- | --- |
+| Flared Muzzle | +1 bullet | +8° spread, −15% range |
+| Scatter Mouth | +2 bullets | −30% damage per bullet, −25% range |
+| Choke | −50% spread, +20% range | −10% fire rate |
+| Compensator | +20% fire rate | +6° spread |
+| Heavy Crown | +25% damage | −20% bullet speed |
+| Rifled Crown | +30% bullet speed, +15% range | −10% damage |
+| Wild Muzzle | +15% crit chance | +15° spread |
+
+- **Stacking:** across pieces, bullet counts and spread degrees add and percentages add up (two −15% range = −30%). Every stat has a floor so stacking downsides never breaks the gun (range at least 30% of base, fire rate at least 50%, damage at least 25%).
+- Extra bullets fan out evenly across the spread; on the Long Gun (0° spread) an added bullet uses a small minimum fan, so Flared on the Long Gun gives a narrow volley.
+- Extra bullets from muzzles count as one volley with the shot, so the pellet rule applies (on-hit effects once per enemy per volley).
+- **Levels, no cap:** a muzzle card dropped on the same piece raises its level. Upside and downside both grow by formula, base + perLevel × (level − 1), with the downside growing slower than the upside, so upgrading is worth it but never free. Dropped on a different piece it replaces it (with a confirm); dropped on an empty slot it is fitted at level 1. The same type can still sit in two slots if the player chooses.
+- No fusing: muzzle pieces never merge with each other or with barrel modules.
+- **Source:** level-up cards (a new card type, Muzzle), since they are part of the gun. Placed by dragging onto a muzzle slot on the level-up screen, which shows the muzzle slots after the barrel. A full muzzle row replaces a piece (with a confirm).
+- All muzzle slots are open from the start.
+- Data: `muzzles.json` (pieces, upside and downside numbers, floors); slot counts in `guns.json`.
+
+### Support perks (were the magazine)
+
+The magazine and its slots are gone. Its mods became **support perks**: simple upgrades that need no slot, and taking one again raises its level (max 3). The Double Barrel starts with Grenade Mag at level 1.
+
+| Support perk | Level 1 | Each level |
 | --- | --- | --- |
 | Extended Mag | Magazine +50% | +25% |
 | Quick Hands | Reload time −30% | −10% |
@@ -204,30 +264,97 @@ Phase 1 has three elements: Fire, Poison and Lightning. Each is a barrel mod. Th
 
 ### Later (not Phase 1)
 
-- More elements (for example frost and water) and element mixes: two elements on the same enemy combine into a stronger effect, such as frost + water freezing it into a glacier. The combination list is designed later.
-- Forge recipes: set mod pairs that combine into a stronger mod, like Vampire Survivors evolutions (for example, Heavy Slug + Grenade Mag makes Cannon Mag).
 - Unlockable cores beyond the starting three, such as a flintlock pistol pair or a crossbow.
+
+## Gear: items (decided 2026-11-21, replaces run stat perk cards)
+
+Plain stat cards ("+10% speed, +8% fire rate") tell the player nothing about what they are building. Run stats now come from **named items** that the Svan finds and wears: *I found Boots of Speed and a Lightning Chokha* reads as a build. Level-up cards stay for the **gun** (barrel modules, support perks, Core Tier); chests and elites give **gear**. The two never share a hand.
+
+Items last for one run, like everything except silver.
+
+**Slots (6):** Boots, Chokha, Svan Hat, Ring, Ring, Cloak.
+
+**Every item has a main theme, and the theme names it.** Rarity adds smaller extra stats. The themes each slot can roll lean the slot towards a role:
+
+| Slot | Leans towards | Example themes |
+| --- | --- | --- |
+| Boots | Movement | Boots of Speed, Boots of Pursuit (pickup radius) |
+| Chokha | Toughness, elements | Iron Chokha (armour), Lightning Chokha, Ember Chokha, Venom Chokha |
+| Svan Hat | Growth, utility | Hunter's Hat (scrap gain), Hat of Focus (reload speed) |
+| Ring (×2) | Offence | Ring of Fury (damage), Quick Ring (fire rate), Far Ring (bullet speed) |
+| Cloak | Survival | Cloak of the Hearth (HP regen), Wolf Cloak (max HP) |
+
+- **Element themes** (Ember, Venom, Lightning) strengthen that element's barrel modules and their hybrids (for example +20% lightning chain damage and Plasma arcs). Gear then nudges which modules the player goes for.
+- Extra stats are drawn from the general stat list (move speed, damage, fire rate, reload speed, bullet speed, pickup radius, max HP, HP regen, armour, scrap gain), never the same stat as the main theme.
+- All themes, stats and numbers live in data (`items.json`), so they can be tuned in the Training Ground.
+
+**Item level, no cap.** Like barrel modules, an item's numbers are base + perLevel × (level − 1). Rarity follows from the level, so an item found early can grow into a good one:
+
+| Level | Rarity | Stats |
+| --- | --- | --- |
+| 1–2 | Common | Main theme only |
+| 3–4 | Magic | + 1 extra stat (rolled when it reaches level 3) |
+| 5+ | Rare | + 2 extra stats (the second rolled at level 5) |
+
+There is no level cap: a run is about 6 minutes, so few items should go past level 8. A found Magic item starts at level 3 and a found Rare at level 5, so finding one and upgrading one are the same thing.
+
+**Legendaries** are named items with a fixed main stat and a **passive** that changes how the player plays. They are only found (never made by upgrading), start at level 1 with their passive, and levelling one also makes the passive stronger. First ideas:
+
+| Legendary | Slot | Passive |
+| --- | --- | --- |
+| Hat of the Tower Keeper | Svan Hat | After standing still for 1 s: +30% damage until you move |
+| Wolf-pelt Cloak | Cloak | A kill gives a short burst of move speed |
+| Ring of the Ember Smith | Ring | Ember Shot and Fire hybrids count as one tier higher |
+| Chokha of the Feast | Chokha | Scrap pickups heal 1 HP |
+| Boots of the Mountain Runner | Boots | Moving builds a charge; the next shot after a full charge pierces everything |
+
+**Where items come from**
+
+| Source | When | What it gives |
+| --- | --- | --- |
+| Elite | Every elite (2:00, 4:00) | A chest, at least Magic |
+| Supply chest on the map | Spawns about every 45 s at a random spot | A chest |
+| Boss | On death | A chest with a Legendary choice |
+
+Aim for 8–10 chests in a full run: enough to fill the 6 slots and still upgrade a few.
+
+**Opening a chest** pauses the game and offers **3 choices**:
+
+- While a slot is empty, at least one choice is a new item for an empty slot.
+- Each choice is either a **new item** (with a compare view against the one in that slot) or an **upgrade**: one of the player's items +1 level.
+- Once every slot is full, chests keep their purpose through upgrades, so a late chest always improves something the player already owns.
+- An item that is replaced is salvaged into scrap (open question: or silver).
+
+**Build sheet (C)** shows a paper doll with the 6 equipment slots (built 2026-11-21, empty until items exist), stats, blessings, magazine work, and the gun drawn as core → barrel → muzzle. Items will show their level, rarity and stats there.
 
 ## In-run progression and roguelike elements
 
-Killed enemies drop **scrap** (XP). Each full scrap bar is a level-up: the game pauses at the workbench and the player picks 1 of 3 random cards. Everything gained in a run is lost when it ends, except silver.
+Killed enemies drop **scrap** (XP). Each full scrap bar is a level-up: the game pauses at the workbench, the player first picks a **path**, then 1 of 3 cards drawn only from that path (decided 2026-11-21, so the player steers the build instead of reacting to random cards).
 
-**Level-up cards** (3 are drawn from these types; only valid ones appear):
+| Path | Offers |
+| --- | --- |
+| **Favor of the Gods** | Elements (Ember Shot, Venom Shot, Thunder Spark, Frost Shot) and **blessings** (the run stat cards: +move speed, +max HP…; they move onto items once items exist) |
+| **Gunsmith** | Grey barrel modules, fittings, muzzle pieces, magazine work (the support perks), Core Tier, Tinker |
+
+- Choosing a path is a commitment for that level-up: there is no going back to look at the other path. The reroll redraws the 3 cards within the chosen path.
+- Chests use the same flow (path, then card).
+- Paths and which card types they hold live in `cards.json > paths`. Everything gained in a run is lost when it ends, except silver.
+
+**Level-up cards** (3 are drawn from the chosen path's types; only valid ones appear):
 
 | Card type | Example | Shown when |
 | --- | --- | --- |
-| New barrel mod | Ricochet | A barrel slot is open, or as a replace option when all are full |
-| New magazine mod | Grenade Mag | A magazine slot is open, or as a replace option |
-| Mod upgrade | Ricochet level 2 | The mod is owned and below level 3 |
+| New module (element, grey or fitting) | Ember Shot | Always (no cap; a module that would fuse with one in the barrel is 3× as likely and marked CAN FUSE) |
+| Support perk | Quick Hands level 2 | Below its max level |
+| Muzzle piece | Flared Muzzle | Always (onto the same piece it upgrades it; a full muzzle row otherwise means replacing one) |
 | Core Tier | Long Gun Tier II | Below Tier V |
-| Perk (run stat) | +10% move speed, +1 armour, +10% scrap gain… for this run | Always |
-| Tinker | Upgrade 2 random owned mods (the same mod can get both) | An owned mod is below level 3; appears as often as one perk |
+| Tinker | 2 random +1 tiers for modules in the barrel (the same one can get both) | The barrel has a module (not a fitting) |
 
 - Scrap needed to go from level L to L+1: `5 + 10 × (L − 1)`, so 5, 15, 25, 35… (tune in playtest). Totals: level 5 at 80 scrap, level 10 at 405, level 15 at 980, level 18 at 1,445. A run should yield roughly 1,200–1,500 scrap before the boss, which gives level 15–18 by the boss.
 - The curve is linear on purpose: the earlier +40% per level curve needed 3,800 scrap for level 18, so late level-ups would barely have happened.
 - Rerolls: 1 per run by default; the market can add more.
-- Card weights are per type and shared by that type's cards (`cards.json` > typeWeights), so perks stay a real option even while there are 9 barrel mods to offer. Perks: move speed, damage, fire rate, reload speed, bullet speed, pickup radius, max HP, HP regen, armour, scrap gain.
-- Card rarity: common, rare, epic. In Phase 1 rarity applies to run stat cards only (for example +10% / +15% / +25%). Mod and Core Tier cards have no rarity; their strength comes from mod levels. Rare and epic odds rise slightly with each level.
+- Card weights are per type and shared by that type's cards (`cards.json` > typeWeights), so support perks stay a real option however many modules there are. Run stats (move speed, damage, fire rate…) are no longer cards: they come from items (see Gear).
+- Level-up cards have no rarity: module strength comes from fusing, support perks from their level. Rarity belongs to items.
 - Multiple level-ups from one pickup are shown one after another.
 
 **Drops on the map**
@@ -238,7 +365,7 @@ Killed enemies drop **scrap** (XP). Each full scrap bar is a level-up: the game 
 | Silver | About 5% of kills (1 silver), every elite (10 silver), the boss (50 silver) | Meta currency, kept after the run |
 | Kubdari (Svan meat pie) | Rare drop, breakable crates | Heals 30 HP |
 | Hunting Horn | Rare drop | Pulls in all scrap on the map |
-| Gunsmith's Chest | Every elite enemy | A free level-up card choice |
+| Chest | Every elite, supply chests on the map (about every 45 s), the boss | 3 gear choices: a new item or an item upgrade (see Gear) |
 | Barrel of Powder | Placed on the map | Explodes when shot, damaging nearby enemies |
 
 ## Enemies and bosses
@@ -253,7 +380,7 @@ Phase 1 needs 5 regular enemy types, an elite version of each and one area boss.
 | Rokapi | Hag-like evil creature | Caster: keeps its distance and throws a slowing curse | 25 | 0 | 2.5 | 6 (projectile) | 3:30 |
 | Devi Brute | Devi, giant multi-headed ogres | Tank: slow, tough, has armour | 120 | 3 | 2 | 20 | 3:30 |
 
-**Elites:** larger, with a coloured outline, 5× HP, +1 defence and one extra trait (faster, or a death burst). Each elite drops a Gunsmith's Chest. Scheduled at 2:00 and 4:00.
+**Elites:** larger, with a coloured outline, 5× HP, +1 defence and one extra trait (faster, or a death burst). Each elite drops a gear chest (at least Magic). Scheduled at 2:00 and 4:00.
 
 **Enemy scaling:** HP +12% per minute survived, applied when the enemy spawns. Damage and speed do not scale. The boss does not scale. Spawn numbers follow the difficulty timeline.
 
@@ -339,7 +466,7 @@ Phase 1 UI is plain and functional: text, boxes and bars, with no art. It needs 
 | Main menu | Start, Market, High Scores, Settings; silver balance shown (no Quit: it is a browser game) | Any of these |
 | Gun select | 3 guns with stats and trait, Start button | Run |
 | HUD (in run) | HP bar, ammo count + reload ring at the cursor, scrap bar + level, timer, kill count, silver, owned mods (slot icons) | Level-up, Pause |
-| Level-up | Game paused; 3 cards with type, rarity and effect; Reroll button; the gun's Core/Magazine/Barrel slots shown, with click-two-slots-to-swap on the barrel | Back to the run |
+| Level-up | Game paused; 3 cards with type, rarity and effect; Reroll button; the gun's barrel shown in colour; a module card is placed by choosing a slot, with a preview of what will fuse; click two slots to swap | Back to the run |
 | Boss bar | Boss name and HP bar across the top, with phase markers |  |
 | Pause | Resume, Settings, Quit run (counts as a loss, keeps silver) | Run, Main menu |
 | Results | Victory or defeat, score, "New best!", stats, final gun build, silver earned | Market, Main menu, Retry |
@@ -356,7 +483,7 @@ Phase 1 is one free roam level, start to finish, with placeholder visuals. It is
 - 1 free roam map (Level 1, "Return from the Hunt"), placeholder blocks and simple obstacles
 - Player movement, mouse aim, shooting, ammo and reload
 - 3 starting guns (Long Gun, Double Barrel, Scrap SMG)
-- Barrel (4 slots) and Magazine (2 slots) with the mods listed above, plus Core Tiers
+- Barrel fusion (elements, hybrids, grey modules, fittings), support perks and Core Tiers
 - Scrap, level-up cards, rerolls, drops
 - 5 enemy types, elites, the Devi Chieftain boss
 - Data-driven difficulty timeline
@@ -377,7 +504,7 @@ Phase 1 is one free roam level, start to finish, with placeholder visuals. It is
 
 - [ ] A full run from main menu to results works with no blocking bugs
 - [ ] All 3 guns can be picked and each one feels different in a playtest
-- [ ] Barrel mods apply in slot order, and changing the order visibly changes the result
+- [ ] Fusing modules (same or mixed colours) and placing fittings visibly changes the result
 - [ ] Level-up never offers an invalid card
 - [ ] The boss appears at 5:30 and a victory retakes the tower
 - [ ] Silver and buff levels persist after closing and reopening the game

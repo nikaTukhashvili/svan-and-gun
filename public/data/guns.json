@@ -8,7 +8,7 @@
     "pellets": 1,
     "shotsPerSecond": 0.8,
     "magSize": 5,
-    "reloadSec": 2.0,
+    "reloadSec": 2,
     "spreadDeg": 0,
     "range": 14,
     "bulletSpeed": 30,
@@ -20,12 +20,11 @@
       "fireRate": 0.05
     },
     "barrel": {
-      "slots": 6,
+      "slots": 8,
       "chains": 1,
-      "muzzleBoost": 2,
       "critChamberMult": 0
     },
-    "magazineSlots": 2
+    "muzzleSlots": 3
   },
   {
     "id": "double_barrel",
@@ -48,12 +47,14 @@
       "fireRate": 0.05
     },
     "barrel": {
-      "slots": 6,
+      "slots": 8,
       "chains": 2,
-      "muzzleBoost": 1,
       "critChamberMult": 0
     },
-    "magazineSlots": 2
+    "muzzleSlots": 2,
+    "startingSupport": {
+      "grenade_mag": 1
+    }
   },
   {
     "id": "scrap_smg",
@@ -76,11 +77,10 @@
       "fireRate": 0.05
     },
     "barrel": {
-      "slots": 4,
+      "slots": 7,
       "chains": 1,
-      "muzzleBoost": 1,
       "critChamberMult": 3
     },
-    "magazineSlots": 3
+    "muzzleSlots": 3
   }
 ]

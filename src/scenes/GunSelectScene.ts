@@ -62,7 +62,8 @@ export class GunSelectScene extends Phaser.Scene {
       `Reload       ${gun.reloadSec} s`,
       `Range        ${gun.range} units`,
       `Spread       ${gun.spreadDeg}°`,
-      `Slots        ${gun.barrel.slots} barrel · ${gun.magazineSlots} mag`,
+      `Barrel       ${gun.barrel.slots} slots`,
+      `Muzzle       ${gun.muzzleSlots} slots`,
     ];
     this.add
       .text(x, top + 24, `[${index + 1}]`, { fontFamily: FONT, fontSize: '14px', color: UiColors.textDim })

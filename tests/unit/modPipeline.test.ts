@@ -5,7 +5,7 @@ import { u } from '../../src/core/math';
 import { RNG } from '../../src/core/rng';
 import { getById } from '../../src/data/registry';
 import { BulletSystem, REDIRECTED } from '../../src/systems/bullets';
-import { createBuild, type RunBuild } from '../../src/systems/build';
+import { createBuild, type RunBuild, type SupportLevels } from '../../src/systems/build';
 import { EnemySystem } from '../../src/systems/enemies';
 import { applyOnFire, buildPipeline, HitResolver, type Pipeline } from '../../src/systems/modPipeline';
 import { ObstacleField } from '../../src/systems/obstacles';
@@ -30,12 +30,18 @@ const shot = (o: Partial<ShotSpec> = {}): ShotSpec => ({
   ...o,
 });
 
-function buildWith(barrel: (string | null)[], magazine: (string | null)[] = []): RunBuild {
+/** A build from module ids; "id:3" means tier 3. */
+function buildWith(barrel: (string | null)[]): RunBuild {
   const b = createBuild();
-  barrel.forEach((id, i) => (b.barrel[i] = id ? { id, level: 1 } : null));
-  magazine.forEach((id, i) => (b.magazine[i] = id ? { id, level: 1 } : null));
+  barrel.forEach((spec, i) => {
+    if (!spec) return;
+    const [id, tier] = spec.split(':');
+    b.barrel[i] = { id: id!, tier: tier ? Number(tier) : 1 };
+  });
   return b;
 }
+
+const supportPipeline = (support: SupportLevels) => buildPipeline(data, createBuild(), null, support);
 
 /** A small world: enemies, bullets, statuses and the resolver for a given build. */
 function world(build: RunBuild) {
@@ -102,47 +108,33 @@ describe('onFire mods', () => {
   });
 });
 
-describe('slot order (GDD: Barrel)', () => {
-  /** Fire one bullet into enemy A with enemy B nearby, then report what the shards can do. */
-  function splitThenCheck(order: string[]) {
-    const w = world(buildWith(order));
-    w.enemies.spawn('devi_brute', 400, 500, { minutes: 0 });
-    w.enemies.spawn('devi_brute', 520, 560, { minutes: 0 });
-    w.settle();
-    w.bullets.spawn(shot(), 300, 500);
-    w.step(20);
-    const shards = w.bullets.bullets.filter((b) => b.active && b.generation === 1);
-    return { w, shards };
-  }
-
-  it('Split Shot then Ricochet: the shards carry Ricochet', () => {
-    const { shards } = splitThenCheck(['split_shot', 'ricochet']);
-    expect(shards.length).toBeGreaterThan(0);
-    for (const s of shards) expect(s.fromSlot).toBe(1); // ricochet sits in slot 1
+describe('no slot order; the loop guard (GDD: Barrel fusion)', () => {
+  it('order does not matter: Split Shot and Ricochet either way give the same shots', () => {
+    for (const order of [
+      ['split_shot', 'ricochet'],
+      ['ricochet', 'split_shot'],
+    ]) {
+      const w = world(buildWith(order));
+      w.enemies.spawn('devi_brute', 400, 500, { minutes: 0 });
+      w.enemies.spawn('devi_brute', 400, 640, { minutes: 0 });
+      w.settle();
+      const b = w.bullets.spawn(shot(), 300, 500)!;
+      w.step(15);
+      expect(b.vy).toBeGreaterThan(0); // bounced towards the second brute
+      expect(w.bullets.bullets.filter((x) => x.active && x.generation === 1).length).toBeGreaterThan(0);
+    }
   });
 
-  it('Ricochet then Split Shot: shards cannot bounce, but the bounced bullet splits', () => {
+  it('a shard never bounces and never splits again', () => {
     const w = world(buildWith(['ricochet', 'split_shot']));
-    w.enemies.spawn('devi_brute', 400, 500, { minutes: 0 });
-    w.enemies.spawn('devi_brute', 400, 640, { minutes: 0 });
-    w.settle();
-    const b = w.bullets.spawn(shot(), 300, 500)!;
-    w.step(15);
-    // The main bullet bounced towards the second brute (it is still alive and redirected).
-    expect(b.fromSlot).toBe(1);
-    expect(b.vy).toBeGreaterThan(0);
-    const shards = w.bullets.bullets.filter((x) => x.active && x.generation === 1);
-    expect(shards.length).toBeGreaterThan(0);
-    for (const s of shards) expect(s.fromSlot).toBe(2); // past both mods: no ricochet
-  });
-
-  it('a shard never bounces when Ricochet comes first', () => {
-    const w = world(buildWith(['ricochet', 'split_shot']));
-    const e = w.enemies.spawn('kaji', 600, 500, { minutes: 0 })!;
+    const e = w.enemies.spawn('devi_brute', 600, 500, { minutes: 0 })!;
     w.enemies.spawn('kaji', 650, 500, { minutes: 0 });
     w.settle();
-    const shard = w.bullets.spawn(shot(), 500, 500, 1, 2)!;
+    const shard = w.bullets.spawn(shot(), 500, 500, 1)!;
     expect(w.resolver.onStop(shard, e, 600, 500)).toBe(false);
+    const before = w.bullets.activeCount;
+    w.resolver.onHit(shard, e, true, 600, 500);
+    expect(w.bullets.activeCount).toBe(before);
   });
 
   it('a redirected bullet reports REDIRECTED to the bullet system', () => {
@@ -157,6 +149,92 @@ describe('slot order (GDD: Barrel)', () => {
   });
 });
 
+describe('tiers, fittings and twists', () => {
+  it('a module uses its tier numbers: Piercing Bore 3 pierces 3 more', () => {
+    const shots = [shot({ pierce: 0 })];
+    applyOnFire(buildPipeline(data, buildWith(['piercing_bore:3'])), shots);
+    expect(shots[0]!.pierce).toBe(3);
+  });
+
+  it('Booster ▶ makes its right neighbour 40% stronger and nothing else', () => {
+    const p = buildPipeline(data, buildWith(['heavy_slug', 'booster_right', 'heavy_slug']));
+    expect(p.strength.slice(0, 3)).toEqual([1, 1, 1.4]);
+    expect(p.fittings).toEqual([{ slot: 1, id: 'booster_right', left: null, right: 2 }]);
+  });
+
+  it('Overcharger: left ×2, right ×0.5; a fitting next to empty slots or fittings does nothing', () => {
+    const p = buildPipeline(
+      data,
+      buildWith(['ember_shot', 'overcharger', 'venom_shot', null, 'brace', 'siphon']),
+    );
+    expect(p.strength[0]).toBeCloseTo(2);
+    expect(p.strength[2]).toBeCloseTo(0.5);
+    expect(p.fittings.find((f) => f.id === 'brace')).toMatchObject({ left: null, right: null });
+    expect(p.fittings.find((f) => f.id === 'siphon')).toMatchObject({ left: null, right: null });
+  });
+
+  it('fittings do not reach across the Double Barrel gap', () => {
+    const gun = getById(data.guns, 'double_barrel', 'gun');
+    const b = createBuild(gun.barrel.slots);
+    b.barrel[3] = { id: 'booster_right', tier: 1 }; // last slot of the left half
+    b.barrel[4] = { id: 'ember_shot', tier: 1 }; // first slot of the right half
+    const p = buildPipeline(data, b, gun);
+    expect(p.strength[4]).toBe(1);
+  });
+
+  it('the Long Gun has no barrel twist any more: its last slot is a normal slot', () => {
+    const gun = getById(data.guns, 'long_gun', 'gun');
+    const b = createBuild(gun.barrel.slots);
+    const last = gun.barrel.slots - 1;
+    b.barrel[last - 1] = { id: 'booster_right', tier: 1 };
+    b.barrel[last] = { id: 'heavy_slug', tier: 1 };
+    expect(buildPipeline(data, b, gun).strength[last]).toBeCloseTo(1.4);
+  });
+});
+
+describe('hybrids', () => {
+  it('Plasma chains and burns every enemy it reaches', () => {
+    const w = world(buildWith(['plasma']));
+    const a = w.enemies.spawn('devi_brute', 400, 500, { minutes: 0 })!;
+    const others = [440, 480].map((x) => w.enemies.spawn('devi_brute', x, 500, { minutes: 0 })!);
+    w.settle();
+    w.bullets.spawn(shot(), 300, 500);
+    w.step(20);
+    expect(a.burnStacks).toBe(1);
+    for (const o of others) {
+      expect(o.burnStacks).toBe(1);
+      expect(o.hp).toBeLessThan(120);
+    }
+  });
+
+  it('Blight Arc poisons every enemy its chain reaches (that poison does not spread)', () => {
+    const w = world(buildWith(['blight_arc']));
+    w.enemies.spawn('devi_brute', 400, 500, { minutes: 0 });
+    const b = w.enemies.spawn('devi_brute', 440, 500, { minutes: 0 })!;
+    w.settle();
+    w.bullets.spawn(shot(), 300, 500);
+    w.step(20);
+    expect(b.poisonTime).toBeGreaterThan(0);
+    expect(b.poisonCanSpread).toBe(false);
+  });
+
+  it('Brimstone burns and poisons; a burning, poisoned enemy bursts on death', () => {
+    const w = world(buildWith(['brimstone']));
+    const a = w.enemies.spawn('kaji', 400, 500, { minutes: 0 })!;
+    const near = w.enemies.spawn('devi_brute', 430, 500, { minutes: 0 })!;
+    w.settle();
+    w.resolver.update(DT); // syncs the burst from the pipeline
+    w.bullets.spawn(shot({ damage: 1 }), 300, 500);
+    w.step(20);
+    expect(a.burnStacks).toBeGreaterThan(0);
+    expect(a.poisonTime).toBeGreaterThan(0);
+    const hp = near.hp;
+    w.enemies.kill(a);
+    expect(near.hp).toBeLessThan(hp);
+    expect(w.status.blasts).toHaveLength(1);
+  });
+});
+
 describe('elements and the pellet rule', () => {
   it('six pellets of one volley add one burn stack; separate volleys add more', () => {
     const w = world(buildWith(['ember_shot']));
@@ -167,7 +245,7 @@ describe('elements and the pellet rule', () => {
     expect(e.burnStacks).toBe(1);
     for (let v = 2; v <= 8; v++) w.bullets.spawn(shot({ volleyId: v, damage: 1 }), 300, 500);
     w.step(20);
-    expect(e.burnStacks).toBe(5); // capped at 5 at level 1
+    expect(e.burnStacks).toBe(5); // capped at 5 at tier 1
   });
 
   it('burn ticks for stacks x 3 dps, ignoring defence, every 0.5 s', () => {
@@ -206,19 +284,19 @@ describe('elements and the pellet rule', () => {
   });
 });
 
-describe('magazine mods', () => {
+describe('support perks (were magazine mods)', () => {
   const gun = getById(data.guns, 'long_gun', 'gun');
   const stats = computeStats(baseStats(data.config, data.cards), emptyBonuses(), emptyBonuses());
 
   it('Extended Mag and Quick Hands change magazine size and reload time', () => {
-    const p = buildPipeline(data, buildWith([], ['extended_mag', 'quick_hands']));
+    const p = supportPipeline({ extended_mag: 1, quick_hands: 1 });
     const w = computeWeaponStats(gun, stats, 1, p.weaponMods);
     expect(w.magSize).toBe(8); // 5 x 1.5 = 7.5, rounded
     expect(w.reloadSec).toBeCloseTo(1.4);
   });
 
   it('Last Round makes the last bullet deal x3', () => {
-    const p = buildPipeline(data, buildWith([], ['last_round']));
+    const p = supportPipeline({ last_round: 1 });
     const weapon = new WeaponSystem(
       computeWeaponStats(gun, stats, 1, p.weaponMods),
       new RNG(1),
@@ -230,9 +308,10 @@ describe('magazine mods', () => {
   });
 
   it('event mods are reported for the scene to trigger', () => {
-    const p = buildPipeline(data, buildWith([], ['grenade_mag', 'scavenger']));
-    expect(p.magazine.grenade).toEqual({ damage: 80, radius: 2.5, throwRange: 6, fuseSec: 0.35 });
-    expect(p.magazine.scavengerChance).toBe(0.1);
+    const p = supportPipeline({ grenade_mag: 1, scavenger: 1 });
+    expect(p.support.grenade).toEqual({ damage: 80, radius: 2.5, throwRange: 6, fuseSec: 0.35 });
+    expect(p.support.scavengerChance).toBe(0.1);
+    expect(supportPipeline({ scavenger: 3 }).support.scavengerChance).toBeGreaterThan(0.1);
   });
 
   it('Scavenger rounds go back into the magazine, never above its size', () => {

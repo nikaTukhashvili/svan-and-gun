@@ -61,15 +61,17 @@ export const ConfigSchema = z.strictObject({
     critMultiplier: pos,
     maxFrameDeltaMs: pos,
     statusTickSec: pos,
+    /** Chill (Frost) never slows an enemy by more than this share of its speed. */
+    maxChillSlow: unit01,
+    /** After a freeze ends, the enemy cannot freeze again for this long (it can still be chilled). */
+    freezeImmunitySec: nonNeg,
   }),
   xp: z.strictObject({ base: pos, step: nonNeg }),
   slots: z.strictObject({
     /** Unlock level per slot index; slots past the end of the list use the last entry. */
     barrelUnlockLevels: z.array(posInt).min(1),
-    magazineUnlockLevels: z.array(posInt).min(1),
-    /** Barrel + magazine slots on any gun (GDD: no gun has more than 12). */
+    /** Barrel slots on any gun (GDD: no gun has more than 12). */
     maxTotalSlots: posInt,
-    maxModLevel: posInt,
     maxCoreTier: posInt,
   }),
   enemies: z.strictObject({
@@ -123,92 +125,202 @@ export const GunSchema = z.strictObject({
   /** Every Nth bullet is a free crit; 0 = no crit trait. */
   critEveryN: nonNegInt,
   tierBonus: z.strictObject({ damage: nonNeg, fireRate: nonNeg }),
-  /** The gun's twist: barrel length, separate chains, muzzle boost, crit chamber. */
+  /** The gun's twist: barrel length, separate chains, crit chamber. */
   barrel: z.strictObject({
     slots: posInt,
     /** Separate chains the barrel is split into; trigger pulls alternate between them. */
     chains: posInt,
-    /** Strength multiplier for the last barrel slot (1 = none). */
-    muzzleBoost: z.number().min(1),
     /** If > 0, the last barrel slot is a crit chamber: it works only on crit bullets, this many times as strong. */
     critChamberMult: nonNeg,
   }),
-  magazineSlots: posInt,
+  /** Muzzle slots at the end of the barrel (GDD: Muzzle). */
+  muzzleSlots: posInt,
+  /** Support perks this gun starts every run with: id → level (Double Barrel: Grenade Mag 1). */
+  startingSupport: z.record(z.string(), posInt).optional(),
 });
 export const GunsSchema = z.array(GunSchema).min(1);
 
-// ---------- barrelMods.json / magazineMods.json ----------
+// ---------- barrelMods.json / supportPerks.json ----------
 
-export const ElementSchema = z.enum(['fire', 'poison', 'lightning']);
-export const BarrelHookSchema = z.enum(['stats', 'onFire', 'onHit', 'operator']);
-export const MagazineHookSchema = z.enum([
-  'stats',
-  'onReloadStart',
-  'onMagazineEmpty',
-  'onLastRound',
-  'onKill',
-]);
+export const ElementSchema = z.enum(['fire', 'poison', 'lightning', 'frost']);
+/**
+ * Barrel module families (GDD: Barrel fusion):
+ * - element: fuses with the same element, or with a different element into a hybrid;
+ * - hybrid: made from two elements; grows only from the same hybrid;
+ * - grey: projectile shape; grows from the same module;
+ * - fitting: directional, never fuses; multiplies its neighbours' strength.
+ */
+export const ModFamilySchema = z.enum(['element', 'hybrid', 'grey', 'fitting']);
 
 /**
- * One mod definition. `levels[i]` holds the numbers for mod level i+1.
- * `description` may use {param} placeholders, filled from the level's numbers.
+ * Tiered numbers: value(tier) = base + perTier × (tier − 1). Tier = copies fused in, no cap.
+ * Count params (chains, bullets, ...) are rounded when read (systems/fusion.ts > tierParams).
+ * `description` may use {param} placeholders, filled from the tier's numbers.
  */
-const levelsOf = <P extends z.ZodRawShape>(params: P) => z.array(z.strictObject(params)).min(1);
+const tiered = <P extends z.ZodRawShape>(params: P) => {
+  const perTier = Object.fromEntries(Object.keys(params).map((k) => [k, z.number()])) as {
+    [K in keyof P]: z.ZodNumber;
+  };
+  return { base: z.strictObject(params), perTier: z.strictObject(perTier) };
+};
 
-const barrel = <Id extends string, P extends z.ZodRawShape, E extends z.ZodType = z.ZodNull>(
+const modCommon = { name: z.string().min(1), description: z.string().min(1), color };
+
+const element = <Id extends string, E extends z.infer<typeof ElementSchema>, P extends z.ZodRawShape>(
   id: Id,
+  el: E,
   params: P,
-  element?: E,
 ) =>
   z.strictObject({
     id: z.literal(id),
-    name: z.string().min(1),
-    description: z.string().min(1),
-    element: (element ?? z.null()) as E,
-    hooks: z.array(BarrelHookSchema).min(1),
-    levels: levelsOf(params),
+    family: z.literal('element'),
+    element: z.literal(el),
+    ...modCommon,
+    ...tiered(params),
   });
 
+const hybrid = <Id extends string, P extends z.ZodRawShape>(id: Id, params: P) =>
+  z.strictObject({
+    id: z.literal(id),
+    family: z.literal('hybrid'),
+    /** The two different elements that fuse into it. */
+    parents: z.tuple([ElementSchema, ElementSchema]),
+    ...modCommon,
+    ...tiered(params),
+  });
+
+const grey = <Id extends string, P extends z.ZodRawShape>(id: Id, params: P) =>
+  z.strictObject({ id: z.literal(id), family: z.literal('grey'), ...modCommon, ...tiered(params) });
+
+/** Fittings: strength change for the left and right neighbour (+0.4 = ×1.4, −0.5 = ×0.5). */
+const fitting = <Id extends string>(id: Id) =>
+  z.strictObject({
+    id: z.literal(id),
+    family: z.literal('fitting'),
+    ...modCommon,
+    left: z.number().min(-1),
+    right: z.number().min(-1),
+  });
+
+/** Chill numbers shared by Frost and its hybrids: % slow per stack, stacks that freeze, shatter %. */
+const chill = {
+  slowPct: pos,
+  chillSec: pos,
+  chillStacks: posInt,
+  freezeSec: nonNeg,
+  shatterPct: nonNeg,
+};
+
 export const BarrelModSchema = z.discriminatedUnion('id', [
-  barrel('ember_shot', { dps: pos, durationSec: pos, maxStacks: posInt }, z.literal('fire')),
-  barrel(
-    'venom_shot',
-    { dps: pos, durationSec: pos, spreadTargets: nonNegInt, spreadRadius: pos },
-    z.literal('poison'),
-  ),
-  barrel('thunder_spark', { chains: posInt, radius: pos, damageFactor: pos }, z.literal('lightning')),
-  barrel('twin_shot', { bullets: z.number().int().min(2), damageFactor: pos, spreadDeg: nonNeg }),
-  barrel('ricochet', { bounces: posInt, radius: pos, damageFactor: pos }),
-  barrel('long_rifling', { speedBonus: nonNeg, rangeBonus: nonNeg }),
-  barrel('piercing_bore', { pierce: posInt }),
-  barrel('heavy_slug', { damageBonus: nonNeg, fireRatePenalty: unit01, knockbackBonus: nonNeg }),
-  barrel('split_shot', { shards: posInt, damageFactor: pos, arcDeg: nonNeg, range: pos }),
-  // Operators: change the mod in the slot to their right.
-  barrel('amplifier', { mult: pos }),
-  barrel('every_nth', { n: z.number().int().min(2), mult: pos }),
-  barrel('on_kill', { mult: pos }),
-  barrel('echo', { delaySec: pos, strength: pos }),
+  element('ember_shot', 'fire', { dps: pos, durationSec: pos, maxStacks: posInt }),
+  element('venom_shot', 'poison', {
+    dps: pos,
+    durationSec: pos,
+    spreadTargets: nonNegInt,
+    spreadRadius: pos,
+  }),
+  element('thunder_spark', 'lightning', { chains: posInt, radius: pos, damageFactor: pos }),
+  element('frost_shot', 'frost', chill),
+  // Hybrids: both parents' effects plus a combo.
+  hybrid('plasma', {
+    chains: posInt,
+    radius: pos,
+    damageFactor: pos,
+    burnDps: pos,
+    burnSec: pos,
+    maxStacks: posInt,
+  }),
+  hybrid('brimstone', {
+    burnDps: pos,
+    burnSec: pos,
+    maxStacks: posInt,
+    poisonDps: pos,
+    poisonSec: pos,
+    blastDamage: pos,
+    blastRadius: pos,
+  }),
+  hybrid('blight_arc', { chains: posInt, radius: pos, damageFactor: pos, poisonDps: pos, poisonSec: pos }),
+  hybrid('steam', {
+    burnDps: pos,
+    burnSec: pos,
+    maxStacks: posInt,
+    ...chill,
+    blastDamage: pos,
+    blastRadius: pos,
+  }),
+  hybrid('frostbite', { poisonDps: pos, poisonSec: pos, ...chill, chilledPoisonMult: pos }),
+  hybrid('hailstorm', { chains: posInt, radius: pos, damageFactor: pos, ...chill }),
+  grey('twin_shot', { bullets: z.number().int().min(2), damageFactor: pos, spreadDeg: nonNeg }),
+  grey('ricochet', { bounces: posInt, radius: pos, damageFactor: pos }),
+  grey('long_rifling', { speedBonus: nonNeg, rangeBonus: nonNeg }),
+  grey('piercing_bore', { pierce: posInt }),
+  grey('heavy_slug', { damageBonus: nonNeg, fireRatePenalty: unit01, knockbackBonus: nonNeg }),
+  grey('split_shot', { shards: posInt, damageFactor: pos, arcDeg: nonNeg, range: pos }),
+  fitting('booster_right'),
+  fitting('booster_left'),
+  fitting('brace'),
+  fitting('overcharger'),
+  fitting('siphon'),
 ]);
 export const BarrelModsSchema = z.array(BarrelModSchema).min(1);
 
-const mag = <Id extends string, P extends z.ZodRawShape>(id: Id, params: P) =>
+/**
+ * Support perks (were magazine mods): no slot; taking one again moves it up a level.
+ * `levels[i]` holds the numbers for level i+1; the number of levels is its max.
+ */
+const levelsOf = <P extends z.ZodRawShape>(params: P) => z.array(z.strictObject(params)).min(1);
+
+const support = <Id extends string, P extends z.ZodRawShape>(id: Id, params: P) =>
   z.strictObject({
     id: z.literal(id),
     name: z.string().min(1),
     description: z.string().min(1),
-    hooks: z.array(MagazineHookSchema).min(1),
     levels: levelsOf(params),
   });
 
-export const MagazineModSchema = z.discriminatedUnion('id', [
-  mag('extended_mag', { magBonus: pos }),
-  mag('quick_hands', { reloadReduction: unit01 }),
-  mag('grenade_mag', { damage: pos, radius: pos, throwRange: pos, fuseSec: pos }),
-  mag('last_round', { damageMult: pos }),
-  mag('shock_reload', { radius: pos, knockback: pos }),
-  mag('scavenger', { chance: unit01 }),
+export const SupportPerkSchema = z.discriminatedUnion('id', [
+  support('extended_mag', { magBonus: pos }),
+  support('quick_hands', { reloadReduction: unit01 }),
+  support('grenade_mag', { damage: pos, radius: pos, throwRange: pos, fuseSec: pos }),
+  support('last_round', { damageMult: pos }),
+  support('shock_reload', { radius: pos, knockback: pos }),
+  support('scavenger', { chance: unit01 }),
 ]);
-export const MagazineModsSchema = z.array(MagazineModSchema).min(1);
+export const SupportPerksSchema = z.array(SupportPerkSchema).min(1);
+
+// ---------- muzzles.json ----------
+
+/**
+ * Muzzle stats (GDD: Muzzle). Every key is optional (0 when missing). Across pieces they add:
+ * bullets and spreadDeg are flat, the *Pct keys are fractions (-0.15 = -15%), critChance 0..1.
+ */
+export const MuzzleStatsSchema = z.strictObject({
+  bullets: z.number().optional(),
+  spreadDeg: z.number().optional(),
+  spreadPct: z.number().optional(),
+  rangePct: z.number().optional(),
+  damagePct: z.number().optional(),
+  fireRatePct: z.number().optional(),
+  bulletSpeedPct: z.number().optional(),
+  critChance: z.number().optional(),
+});
+
+/** A muzzle piece. value(level) = base + perLevel × (level − 1); bullets are rounded. No cap. */
+export const MuzzlePieceSchema = z.strictObject({
+  id: IdSchema,
+  name: z.string().min(1),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  base: MuzzleStatsSchema,
+  perLevel: MuzzleStatsSchema,
+});
+
+export const MuzzlesSchema = z.strictObject({
+  /** Extra bullets on a gun with (almost) no spread fan out over at least this many degrees. */
+  minFanDeg: nonNeg,
+  /** Stacked downsides never push these multipliers below this share of the base. */
+  floors: z.strictObject({ damage: unit01, fireRate: unit01, range: unit01, bulletSpeed: unit01 }),
+  pieces: z.array(MuzzlePieceSchema).min(1),
+});
 
 // ---------- enemies.json ----------
 
@@ -352,20 +464,53 @@ export const TimelineSchema = z.strictObject({
 
 // ---------- cards.json ----------
 
-export const CardTypeSchema = z.enum(['newBarrelMod', 'newMagazineMod', 'modUpgrade', 'coreTier', 'runStat']);
+export const CardTypeSchema = z.enum([
+  'element',
+  'grey',
+  'fitting',
+  'coreTier',
+  'runStat',
+  'supportPerk',
+  'muzzle',
+  'tinker',
+]);
+
+/**
+ * A level-up path (GDD: In-run progression): the player first picks a path, then 1 of 3 cards
+ * drawn only from that path's card types.
+ */
+export const CardPathSchema = z.strictObject({
+  id: IdSchema,
+  name: z.string().min(1),
+  description: z.string().min(1),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  types: z.array(CardTypeSchema).min(1),
+});
 
 export const CardsSchema = z.strictObject({
   baseRerolls: nonNegInt,
   cardsPerLevelUp: posInt,
-  /** Tinker card: this many random level-ups for owned mods. */
+  /** Level-up paths; every card type belongs to exactly one. */
+  paths: z.array(CardPathSchema).min(1),
+  /** Tinker card: this many random +1 tiers for modules in the barrel. */
   randomUpgrade: z.strictObject({ upgrades: posInt }),
+  /**
+   * Weight per card TYPE, shared by that type's cards (more modules in the game do not drown out
+   * perks). Tinker weighs the same as one run stat perk.
+   */
   typeWeights: z.strictObject({
-    newBarrelMod: nonNeg,
-    newMagazineMod: nonNeg,
-    modUpgrade: nonNeg,
+    element: nonNeg,
+    grey: nonNeg,
+    fitting: nonNeg,
     coreTier: nonNeg,
     runStat: nonNeg,
+    supportPerk: nonNeg,
+    muzzle: nonNeg,
+    /** Tinker (random +1 tiers for barrel modules). */
+    tinker: nonNeg,
   }),
+  /** A module card that would fuse with a module already in the barrel weighs this many times more. */
+  fusesWithOwnedMult: z.number().min(1),
   rarity: z.strictObject({
     weights: byRarity(nonNeg),
     /** Added to the rare/epic weights per player level above 1. */

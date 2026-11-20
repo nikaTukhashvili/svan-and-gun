@@ -43,10 +43,12 @@ export interface WeaponStats {
   critEveryN: number;
   /** Damage multiplier for the last round in the magazine (Last Round mod); 1 = none. */
   lastRoundMult: number;
+  /** Chance for any bullet to crit (Wild Muzzle), on top of critEveryN. */
+  critChance: number;
 }
 
 /**
- * Gun + player stats + Core Tier -> effective numbers.
+ * Gun + player stats + Core Tier + build (barrel, support perks, muzzle) -> effective numbers.
  * Tier I is the base; each tier above adds tierBonus (Tier V = +40% damage, +20% fire rate).
  * Bullet speed stat scales both projectile speed and range (GDD: Player character).
  */
@@ -57,20 +59,29 @@ export function computeWeaponStats(
   mods: WeaponMods = NO_WEAPON_MODS,
 ): WeaponStats {
   const tiers = Math.max(0, coreTier - 1);
+  const m = mods.muzzle;
+  const pellets = gun.pellets + m.extraBullets;
+  let spreadDeg = Math.max(0, (gun.spreadDeg + m.spreadAddDeg) * m.spreadMult);
+  if (pellets > 1) spreadDeg = Math.max(spreadDeg, m.minFanDeg);
   return {
-    damage: gun.damage * stats.damage * (1 + gun.tierBonus.damage * tiers),
-    pellets: gun.pellets,
+    damage: gun.damage * stats.damage * (1 + gun.tierBonus.damage * tiers) * m.damageMult,
+    pellets,
     shotsPerSecond:
-      gun.shotsPerSecond * stats.fireRate * (1 + gun.tierBonus.fireRate * tiers) * mods.fireRateMult,
+      gun.shotsPerSecond *
+      stats.fireRate *
+      (1 + gun.tierBonus.fireRate * tiers) *
+      mods.fireRateMult *
+      m.fireRateMult,
     magSize: Math.max(1, Math.round(gun.magSize * mods.magMult)),
     reloadSec: (gun.reloadSec / stats.reloadSpeed) * mods.reloadMult,
-    spreadDeg: gun.spreadDeg,
-    range: u(gun.range * stats.bulletSpeed),
-    bulletSpeed: u(gun.bulletSpeed * stats.bulletSpeed),
+    spreadDeg,
+    range: u(gun.range * stats.bulletSpeed * m.rangeMult),
+    bulletSpeed: u(gun.bulletSpeed * stats.bulletSpeed * m.speedMult),
     pierce: gun.pierce,
     knockback: gun.knockback,
     critEveryN: gun.critEveryN,
     lastRoundMult: mods.lastRoundMult,
+    critChance: m.critChance,
   };
 }
 
@@ -156,13 +167,15 @@ export class WeaponSystem {
     return true;
   }
 
-  /** One trigger pull: one round, `pellets` bullets. */
+  /** One trigger pull: one round, `pellets` bullets (muzzle bullets included, one volley). */
   private fire(aimAngle: number, out: ShotSpec[]): void {
     const s = this.stats;
     this.ammo--;
     this.shotCount++;
     this.volleyCount++;
-    const crit = s.critEveryN > 0 && this.shotCount % s.critEveryN === 0;
+    const crit =
+      (s.critEveryN > 0 && this.shotCount % s.critEveryN === 0) ||
+      (s.critChance > 0 && this.rng.chance(s.critChance));
     const damage = this.ammo === 0 ? s.damage * s.lastRoundMult : s.damage;
     const spread = degToRad(s.spreadDeg);
 
