@@ -5,12 +5,14 @@
     "upgrades": 2
   },
   "typeWeights": {
-    "newBarrelMod": 3,
-    "newMagazineMod": 2,
-    "modUpgrade": 3,
+    "element": 3,
+    "grey": 3,
+    "fitting": 1.5,
     "coreTier": 1.5,
-    "runStat": 3
+    "runStat": 3,
+    "supportPerk": 2
   },
+  "fusesWithOwnedMult": 3,
   "rarity": {
     "weights": {
       "common": 70,

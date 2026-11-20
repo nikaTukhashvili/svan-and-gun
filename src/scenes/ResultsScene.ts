@@ -90,9 +90,8 @@ export class ResultsScene extends Phaser.Scene {
     const right = 700;
     t(right, 230, 'FINAL GUN', 16, UiColors.textDim, true);
     t(right, 256, `${gun.name} · Core Tier ${roman(build.coreTier)}`, 22, UiColors.text, true);
-    const barrel = build.barrel.map((s, i) => `Barrel ${i + 1}: ${slotLabel(gd, 'barrel', s)}`);
-    const mag = build.magazine.map((s, i) => `Magazine ${i + 1}: ${slotLabel(gd, 'magazine', s)}`);
-    t(right, 296, [...barrel, ...mag].join('\n'), 18).setLineSpacing(8);
+    const barrel = build.barrel.map((s, i) => `Barrel ${i + 1}: ${slotLabel(gd, s)}`);
+    t(right, 296, barrel.join('\n'), 18).setLineSpacing(8);
 
     createButton(
       this,

@@ -19,7 +19,7 @@ import {
   DropsSchema,
   EnemiesSchema,
   GunsSchema,
-  MagazineModsSchema,
+  SupportPerksSchema,
   MapSchema,
   PlaygroundSchema,
   TimelineSchema,
@@ -39,7 +39,7 @@ const fileSchemas = {
   config: ConfigSchema,
   guns: GunsSchema,
   barrelMods: BarrelModsSchema,
-  magazineMods: MagazineModsSchema,
+  supportPerks: SupportPerksSchema,
   enemies: EnemiesSchema,
   boss: BossSchema,
   timeline: TimelineSchema,
@@ -104,13 +104,13 @@ function placeholders(template: string): string[] {
 function crossCheck(d: Parsed & { maps: Record<string, MapDef> }): string[] {
   const p: string[] = [];
   const enemyIds = new Set(d.enemies.map((e) => e.id));
-  const { maxModLevel, barrelUnlockLevels, magazineUnlockLevels } = d.config.slots;
+  const { barrelUnlockLevels } = d.config.slots;
 
   // Unique ids per file.
   for (const [file, ids] of [
     ['guns', d.guns.map((g) => g.id)],
     ['barrelMods', d.barrelMods.map((m) => m.id)],
-    ['magazineMods', d.magazineMods.map((m) => m.id)],
+    ['supportPerks', d.supportPerks.map((m) => m.id)],
     ['enemies', d.enemies.map((e) => e.id)],
     ['buffs', d.buffs.map((b) => b.id)],
     ['cards.runStats', d.cards.runStats.map((c) => c.id)],
@@ -124,34 +124,51 @@ function crossCheck(d: Parsed & { maps: Record<string, MapDef> }): string[] {
   if (barrelUnlockLevels[0] !== 1)
     p.push('config.json > slots.barrelUnlockLevels: slot 1 must unlock at level 1');
   if (!ascending(barrelUnlockLevels)) p.push('config.json > slots.barrelUnlockLevels: must be ascending');
-  if (!ascending(magazineUnlockLevels)) p.push('config.json > slots.magazineUnlockLevels: must be ascending');
   for (const g of d.guns) {
     const where = 'guns.json > ' + g.id + ' > barrel';
     if (g.barrel.slots % g.barrel.chains !== 0) p.push(where + ': slots must split evenly into chains');
-    if (g.barrel.slots + g.magazineSlots > d.config.slots.maxTotalSlots)
-      p.push(where + ': barrel + magazine slots exceed config.slots.maxTotalSlots');
+    if (g.barrel.slots > d.config.slots.maxTotalSlots)
+      p.push(where + ': more slots than config.slots.maxTotalSlots');
     if (g.barrel.critChamberMult > 0 && g.critEveryN === 0)
       p.push(where + ': a crit chamber needs a gun with crits (critEveryN > 0)');
   }
 
-  // Mods: one entry per level, description placeholders exist in every level.
-  for (const [file, mods] of [
-    ['barrelMods', d.barrelMods],
-    ['magazineMods', d.magazineMods],
-  ] as const) {
-    for (const mod of mods) {
-      if (mod.levels.length !== maxModLevel)
-        p.push(
-          `${file}.json > ${mod.id}: has ${mod.levels.length} levels, config.slots.maxModLevel is ${maxModLevel}`,
-        );
-      for (const key of placeholders(mod.description)) {
-        mod.levels.forEach((lvl, i) => {
-          if (!(key in lvl))
-            p.push(`${file}.json > ${mod.id}: description uses {${key}} but level ${i + 1} has no "${key}"`);
-        });
-      }
-    }
+  // Barrel modules: placeholders exist; hybrids are made of two different elements, and every
+  // pair of elements present has exactly one hybrid.
+  for (const mod of d.barrelMods) {
+    const where = `barrelMods.json > ${mod.id}`;
+    const keys = mod.family === 'fitting' ? ['left', 'right'] : Object.keys(mod.base);
+    for (const key of placeholders(mod.description))
+      if (!keys.includes(key)) p.push(`${where}: description uses {${key}} but has no "${key}"`);
+    if (mod.family === 'hybrid' && mod.parents[0] === mod.parents[1])
+      p.push(`${where}: a hybrid needs two different parent elements`);
   }
+  const elements = [...new Set(d.barrelMods.flatMap((m) => (m.family === 'element' ? [m.element] : [])))];
+  for (const id of duplicates(d.barrelMods.flatMap((m) => (m.family === 'element' ? [m.element] : []))))
+    p.push(`barrelMods.json: more than one module for element "${id}"`);
+  for (let i = 0; i < elements.length; i++)
+    for (let j = i + 1; j < elements.length; j++) {
+      const a = elements[i]!;
+      const b = elements[j]!;
+      const n = d.barrelMods.filter(
+        (m) => m.family === 'hybrid' && m.parents.includes(a) && m.parents.includes(b),
+      ).length;
+      if (n !== 1) p.push(`barrelMods.json: elements ${a} + ${b} need exactly one hybrid, found ${n}`);
+    }
+  for (const m of d.barrelMods)
+    if (m.family === 'hybrid')
+      for (const el of m.parents)
+        if (!elements.includes(el)) p.push(`barrelMods.json > ${m.id}: no element module for parent "${el}"`);
+
+  // Support perks: placeholders exist in every level.
+  for (const perk of d.supportPerks)
+    for (const key of placeholders(perk.description))
+      perk.levels.forEach((lvl, i) => {
+        if (!(key in lvl))
+          p.push(
+            `supportPerks.json > ${perk.id}: description uses {${key}} but level ${i + 1} has no "${key}"`,
+          );
+      });
 
   // Guns: Double Barrel style multi-pellet guns need a spread.
   for (const g of d.guns) {

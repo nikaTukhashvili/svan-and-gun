@@ -43,7 +43,7 @@ test('shooting the dummy fills the meter; the dummy never dies; reset clears it'
   );
   await page.getByTestId('playground-barrel-0').selectOption(firstMod);
   const build = await page.evaluate(() => window.__svan!.run!.build());
-  expect(build.barrel[0]).toEqual({ id: firstMod, level: 1 });
+  expect(build.barrel[0]).toEqual({ id: firstMod, tier: 1 });
 
   // The plain dummy stands straight to the right of the player.
   const aim = await gamePoint(page, 960, 360);

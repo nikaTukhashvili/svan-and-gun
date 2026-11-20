@@ -6,7 +6,7 @@
 import Phaser from 'phaser';
 import { SceneKeys } from '../config';
 import type { RunResult } from '../core/events';
-import type { RunBuild } from '../systems/build';
+import type { Card, RunBuild } from '../systems/build';
 import type { DpsStats } from '../systems/dpsMeter';
 import { freshSave, type SaveSystem, type SaveV1 } from '../systems/save';
 
@@ -33,6 +33,8 @@ export interface RunDebugState {
   result: RunResult | null;
   level: number;
   levelUpOpen: boolean;
+  /** Cards picked on level-up screens this run. */
+  cardsPicked: number;
   silver: number;
 }
 
@@ -68,6 +70,10 @@ export interface RunDebugApi {
   grantScrap(amount: number): void;
   build(): RunBuild;
   setBuild(build: RunBuild): void;
+  /** The next level-up screen shows exactly these cards (then normal draws resume). */
+  queueHand(cards: Card[]): void;
+  /** Support perk levels taken. */
+  support(): Record<string, number>;
   pickups(): { kind: string; value: number; x: number; y: number }[];
   /** Present in the Training Ground only. */
   playground?: PlaygroundDebugApi;

@@ -1,148 +1,124 @@
 /**
- * The gun build for one run (T18, T19, T22, T23): barrel slots (4), magazine slots (2), Core
- * Tier, plus the level-up card draw that changes it.
+ * The gun build for one run: the barrel (fusing modules, GDD: Barrel fusion) and Core Tier, plus
+ * the level-up card draw that changes it. Support perks and run stat perks live on the run.
  *
- * CardDraw builds the list of VALID cards first and only then picks, so it can never offer an
- * invalid card (TDD: CardDraw algorithm):
- * - a new mod only if that mod is not owned; as a `replace` card when every unlocked slot is full;
- * - an upgrade only for an owned mod below the max level;
- * - Core Tier only below the max tier;
- * - run stat cards are always valid and fill the hand if fewer than 3 cards are valid.
+ * CardDraw builds the list of VALID cards first and only then picks (TDD: CardDraw algorithm):
+ * - module cards are always valid (tiers have no cap; a full barrel can still fuse or replace);
+ * - a module that would fuse with one already in the barrel weighs more (cards.fusesWithOwnedMult);
+ * - Core Tier only below the max tier; a support perk only below its max level;
+ * - Tinker only when the barrel has a module that can go up a tier.
  */
 import type { RNG } from '../core/rng';
-import type { GameData, GunDef, Rarity, StatId, StatMode } from '../data/types';
+import type { GameData, GunDef, ModFamily, Rarity, StatId, StatMode } from '../data/types';
+import { fusesWithOwned, modDef, place, swapAndFuse, type FusionEvent } from './fusion';
+import { layoutOf } from './modPipeline';
 import { addBonus, type StatBonuses } from './stats';
-
-export type SlotKind = 'barrel' | 'magazine';
 
 export interface ModSlot {
   id: string;
-  level: number;
+  /** Copies fused in (1 = a fresh module). No cap. */
+  tier: number;
 }
 
 export interface RunBuild {
   barrel: (ModSlot | null)[];
-  magazine: (ModSlot | null)[];
   coreTier: number;
 }
 
+/** Support perk id → level taken (1..its number of levels). */
+export type SupportLevels = Record<string, number>;
+
 export type Card =
-  | { type: 'newMod'; kind: SlotKind; modId: string; replace: boolean }
-  | { type: 'modUpgrade'; kind: SlotKind; modId: string; toLevel: number }
+  /** A fresh tier-1 module; the player picks the slot (place / fuse / replace). */
+  | { type: 'module'; modId: string; family: ModFamily; fuses: boolean }
   | { type: 'coreTier'; toTier: number }
   | { type: 'runStat'; cardId: string; rarity: Rarity; stat: StatId; mode: StatMode; value: number }
-  /** Tinker: random level-ups for owned mods, chosen when the card is drawn (a surprise for the player). */
-  | { type: 'randomUpgrade'; upgrades: { kind: SlotKind; modId: string }[] };
+  | { type: 'supportPerk'; perkId: string; toLevel: number }
+  /** Tinker: random +1 tiers for modules in the barrel, chosen when drawn (a surprise). */
+  | { type: 'randomUpgrade'; upgrades: { slot: number; modId: string }[] };
 
-/** Slot counts for a build: each gun has its own barrel length (guns.json > barrel). */
-export interface SlotLayout {
-  barrel: number;
-  magazine: number;
+/** What a picked card changes on the run. */
+export interface BuildTarget {
+  build: RunBuild;
+  runBonuses: StatBonuses;
+  support: SupportLevels;
 }
 
-export function createBuild(layout: SlotLayout = { barrel: 4, magazine: 2 }): RunBuild {
-  return {
-    barrel: Array.from({ length: layout.barrel }, () => null),
-    magazine: Array.from({ length: layout.magazine }, () => null),
-    coreTier: 1,
-  };
+export function createBuild(barrelSlots = 8): RunBuild {
+  return { barrel: Array.from({ length: barrelSlots }, () => null), coreTier: 1 };
 }
 
 export function buildForGun(gun: GunDef): RunBuild {
-  return createBuild({ barrel: gun.barrel.slots, magazine: gun.magazineSlots });
+  return createBuild(gun.barrel.slots);
 }
 
 /**
- * How many slots of `slotCount` are open at this player level. Unlock levels come from
- * config.slots; slots past the end of the list use its last entry (all 1 by default).
+ * How many of `slotCount` barrel slots are open at this player level. Unlock levels come from
+ * config.slots.barrelUnlockLevels; slots past the end of the list use its last entry.
  */
-export function unlockedSlots(data: GameData, kind: SlotKind, level: number, slotCount: number): number {
-  const levels =
-    kind === 'barrel' ? data.config.slots.barrelUnlockLevels : data.config.slots.magazineUnlockLevels;
+export function unlockedSlots(data: GameData, level: number, slotCount: number): number {
+  const levels = data.config.slots.barrelUnlockLevels;
   let open = 0;
   for (let i = 0; i < slotCount; i++) if (level >= (levels[i] ?? levels[levels.length - 1] ?? 1)) open++;
   return open;
 }
 
-const slotsOf = (build: RunBuild, kind: SlotKind) => (kind === 'barrel' ? build.barrel : build.magazine);
-
-export function findMod(build: RunBuild, kind: SlotKind, modId: string): number {
-  return slotsOf(build, kind).findIndex((s) => s?.id === modId);
-}
-
 /** A stable key: two cards with the same key are the same offer. */
 export function cardKey(c: Card): string {
   switch (c.type) {
-    case 'newMod':
-      return `new:${c.kind}:${c.modId}`;
-    case 'modUpgrade':
-      return `up:${c.kind}:${c.modId}`;
+    case 'module':
+      return `mod:${c.modId}`;
     case 'coreTier':
       return 'core';
     case 'runStat':
       return `stat:${c.cardId}`;
+    case 'supportPerk':
+      return `support:${c.perkId}`;
     case 'randomUpgrade':
       return 'tinker';
   }
 }
 
 /**
- * Every valid mod / Core Tier card for this build at this level, with its weight.
- * typeWeights are per TYPE and shared by that type's cards, so the chance of seeing a type does
- * not grow with the number of mods in the game (9 barrel mods used to drown out perks).
+ * Every valid module / Core Tier / support perk card, with its weight. typeWeights are per TYPE
+ * and shared by that type's cards. Hybrids are never offered: they are only made by fusing.
  */
-export function candidateCards(data: GameData, build: RunBuild, level: number): [Card, number][] {
+export function candidateCards(
+  data: GameData,
+  build: RunBuild,
+  support: SupportLevels = {},
+): [Card, number][] {
   const w = data.cards.typeWeights;
-  const maxLevel = data.config.slots.maxModLevel;
   const out: [Card, number][] = [];
-
-  for (const kind of ['barrel', 'magazine'] as const) {
-    const slots = slotsOf(build, kind);
-    const open = unlockedSlots(data, kind, level, slots.length);
-    if (open === 0) continue;
-    const hasFree = slots.slice(0, open).some((s) => s === null);
-    const defs = kind === 'barrel' ? data.barrelMods : data.magazineMods;
-    const weight = kind === 'barrel' ? w.newBarrelMod : w.newMagazineMod;
-
+  for (const family of ['element', 'grey', 'fitting'] as const) {
+    const defs = data.barrelMods.filter((m) => m.family === family);
     for (const def of defs) {
-      const idx = findMod(build, kind, def.id);
-      if (idx === -1) {
-        out.push([{ type: 'newMod', kind, modId: def.id, replace: !hasFree }, weight]);
-      } else if (slots[idx]!.level < maxLevel) {
-        out.push([{ type: 'modUpgrade', kind, modId: def.id, toLevel: slots[idx]!.level + 1 }, w.modUpgrade]);
-      }
+      const fuses = fusesWithOwned(data, build, def.id);
+      const weight = (w[family] / defs.length) * (fuses ? data.cards.fusesWithOwnedMult : 1);
+      out.push([{ type: 'module', modId: def.id, family, fuses }, weight]);
     }
   }
-
   if (build.coreTier < data.config.slots.maxCoreTier)
     out.push([{ type: 'coreTier', toTier: build.coreTier + 1 }, w.coreTier]);
 
-  // Split each type's weight across its cards.
-  const typeOf = (c: Card) => (c.type === 'newMod' ? 'new:' + c.kind : c.type);
-  const counts = new Map<string, number>();
-  for (const [c] of out) counts.set(typeOf(c), (counts.get(typeOf(c)) ?? 0) + 1);
-  return out.map(([c, weight]): [Card, number] => [c, weight / counts.get(typeOf(c))!]);
+  const perks = data.supportPerks.filter((p) => (support[p.id] ?? 0) < p.levels.length);
+  for (const p of perks)
+    out.push([
+      { type: 'supportPerk', perkId: p.id, toLevel: (support[p.id] ?? 0) + 1 },
+      w.supportPerk / perks.length,
+    ]);
+  return out;
 }
 
-/**
- * Tinker card: random level-ups among owned mods below the max level (the same mod can get more
- * than one). Null when nothing can be upgraded.
- */
+/** Tinker card: random +1 tiers among tiered modules in the barrel. Null when there are none. */
 export function rollTinker(data: GameData, build: RunBuild, rng: RNG): Card | null {
-  const max = data.config.slots.maxModLevel;
-  const pool: { kind: SlotKind; modId: string; level: number }[] = [];
-  for (const kind of ['barrel', 'magazine'] as const)
-    for (const s of slotsOf(build, kind))
-      if (s && s.level < max) pool.push({ kind, modId: s.id, level: s.level });
+  const pool: { slot: number; modId: string }[] = [];
+  build.barrel.forEach((s, slot) => {
+    if (s && modDef(data, s.id).family !== 'fitting') pool.push({ slot, modId: s.id });
+  });
   if (pool.length === 0) return null;
-  const upgrades: { kind: SlotKind; modId: string }[] = [];
-  for (let i = 0; i < data.cards.randomUpgrade.upgrades && pool.length > 0; i++) {
-    const j = rng.int(0, pool.length - 1);
-    const m = pool[j]!;
-    upgrades.push({ kind: m.kind, modId: m.modId });
-    m.level++;
-    if (m.level >= max) pool.splice(j, 1);
-  }
+  const upgrades: { slot: number; modId: string }[] = [];
+  for (let i = 0; i < data.cards.randomUpgrade.upgrades; i++) upgrades.push(rng.pick(pool));
   return { type: 'randomUpgrade', upgrades };
 }
 
@@ -162,10 +138,11 @@ export function drawCards(
   build: RunBuild,
   level: number,
   rng: RNG,
+  support: SupportLevels = {},
   count = data.cards.cardsPerLevelUp,
 ): Card[] {
-  const pool: [Card, number][] = [...candidateCards(data, build, level)];
-  // Perks (run stat cards) share the runStat weight; Tinker weighs the same as one perk.
+  const pool: [Card, number][] = [...candidateCards(data, build, support)];
+  // Run stat perks share the runStat weight; Tinker weighs the same as one perk.
   const perkWeight = data.cards.typeWeights.runStat / data.cards.runStats.length;
   for (const rs of data.cards.runStats) {
     pool.push([
@@ -183,7 +160,7 @@ export function drawCards(
     pool.splice(picked, 1);
   }
 
-  // Run stat cards get their rarity (and so their value) only once picked.
+  // Run stat cards get their rarity (and so their value) only once drawn.
   return hand.map((c) => {
     if (c.type !== 'runStat') return c;
     const def = data.cards.runStats.find((r) => r.id === c.cardId)!;
@@ -193,91 +170,85 @@ export function drawCards(
 }
 
 /**
- * Apply a picked card. A `replace` card needs `replaceSlot` (an unlocked slot index); the new
- * mod starts at level 1 there. Returns the slot index changed, or -1 for non-slot cards.
+ * Apply a picked card. A module card needs `slot` (an open barrel slot). Returns what happened
+ * in the barrel (place / fuse / replace events); empty for other cards.
  */
 export function applyCard(
-  build: RunBuild,
-  runBonuses: StatBonuses,
+  data: GameData,
+  gun: GunDef | null,
+  target: BuildTarget,
   card: Card,
-  replaceSlot?: number,
-): number {
+  slot?: number,
+): FusionEvent[] {
+  const { build } = target;
   switch (card.type) {
-    case 'newMod': {
-      const slots = slotsOf(build, card.kind);
-      let idx: number;
-      if (card.replace) {
-        if (replaceSlot === undefined || slots[replaceSlot] === undefined || slots[replaceSlot] === null)
-          throw new Error('A replace card needs a filled slot to replace');
-        idx = replaceSlot;
-      } else {
-        idx = slots.indexOf(null);
-        if (idx === -1) throw new Error('No free slot');
-      }
-      slots[idx] = { id: card.modId, level: 1 };
-      return idx;
-    }
-    case 'modUpgrade': {
-      const idx = findMod(build, card.kind, card.modId);
-      if (idx === -1) throw new Error(`Mod ${card.modId} not owned`);
-      slotsOf(build, card.kind)[idx]!.level = card.toLevel;
-      return idx;
-    }
+    case 'module':
+      if (slot === undefined) throw new Error('A module card needs a slot');
+      return place(data, build, layoutOf(gun, build.barrel.length), slot, { id: card.modId, tier: 1 });
     case 'coreTier':
       build.coreTier = card.toTier;
-      return -1;
+      return [];
     case 'runStat':
-      addBonus(runBonuses, card.stat, card.mode, card.value);
-      return -1;
+      addBonus(target.runBonuses, card.stat, card.mode, card.value);
+      return [];
+    case 'supportPerk':
+      target.support[card.perkId] = card.toLevel;
+      return [];
     case 'randomUpgrade':
       for (const up of card.upgrades) {
-        const idx = findMod(build, up.kind, up.modId);
-        if (idx === -1) throw new Error('Mod ' + up.modId + ' not owned');
-        slotsOf(build, up.kind)[idx]!.level++;
+        // Slots may have moved since the draw (swaps): fall back to any slot with that module.
+        let i =
+          build.barrel[up.slot]?.id === up.modId
+            ? up.slot
+            : build.barrel.findIndex((s) => s?.id === up.modId);
+        if (i === -1)
+          i = build.barrel.findIndex((s) => s !== null && modDef(data, s.id).family !== 'fitting');
+        if (i !== -1) build.barrel[i]!.tier++;
       }
-      return -1;
+      return [];
   }
 }
 
-/** Swap two barrel slots (free, on the level-up screen). Order changes the gun (GDD: Barrel). */
-export function swapSlots(build: RunBuild, kind: SlotKind, a: number, b: number): void {
-  const slots = slotsOf(build, kind);
-  const tmp = slots[a] ?? null;
-  slots[a] = slots[b] ?? null;
-  slots[b] = tmp;
+/** Put a module in a slot directly, without fusing (Training Ground). `null` empties it. */
+export function setSlot(build: RunBuild, index: number, slot: ModSlot | null): void {
+  if (index < 0 || index >= build.barrel.length) throw new Error(`No barrel slot ${index}`);
+  build.barrel[index] = slot ? { id: slot.id, tier: slot.tier } : null;
 }
 
-/**
- * Put a mod in a slot directly (Training Ground). A mod can be in only one slot per kind, as
- * findMod expects, so putting it in a second slot moves it there. `null` empties the slot.
- */
-export function setSlot(build: RunBuild, kind: SlotKind, index: number, slot: ModSlot | null): void {
-  const slots = slotsOf(build, kind);
-  if (index < 0 || index >= slots.length) throw new Error(`No ${kind} slot ${index}`);
-  if (slot) {
-    const other = findMod(build, kind, slot.id);
-    if (other !== -1 && other !== index) slots[other] = null;
-  }
-  slots[index] = slot ? { id: slot.id, level: slot.level } : null;
+/** Swap two barrel slots (free, on the level-up screen); matches brought together fuse. */
+export function swapSlots(
+  data: GameData,
+  gun: GunDef | null,
+  build: RunBuild,
+  a: number,
+  b: number,
+): FusionEvent[] {
+  return swapAndFuse(data, build, layoutOf(gun, build.barrel.length), a, b);
 }
 
-/** True if a new (non-replace) mod would need a free slot that does not exist. For tests. */
-export function isCardValid(data: GameData, build: RunBuild, level: number, card: Card): boolean {
-  if (card.type === 'runStat') return true;
-  if (card.type === 'randomUpgrade') {
-    // Every level-up must land on an owned mod and stay within the max level.
-    const levels = new Map<string, number>();
-    for (const up of card.upgrades) {
-      const idx = findMod(build, up.kind, up.modId);
-      if (idx === -1) return false;
-      const key = up.kind + ':' + up.modId;
-      const next = (levels.get(key) ?? slotsOf(build, up.kind)[idx]!.level) + 1;
-      if (next > data.config.slots.maxModLevel) return false;
-      levels.set(key, next);
-    }
-    return card.upgrades.length > 0;
+/** Is this card a valid offer for this build? For tests. */
+export function isCardValid(
+  data: GameData,
+  build: RunBuild,
+  card: Card,
+  support: SupportLevels = {},
+): boolean {
+  switch (card.type) {
+    case 'runStat':
+      return true;
+    case 'module':
+      return data.barrelMods.some((m) => m.id === card.modId && m.family !== 'hybrid');
+    case 'randomUpgrade':
+      return (
+        card.upgrades.length > 0 &&
+        card.upgrades.every((u) => {
+          const s = build.barrel[u.slot];
+          return s?.id === u.modId && modDef(data, s.id).family !== 'fitting';
+        })
+      );
+    default:
+      return candidateCards(data, build, support).some(
+        ([c]) => cardKey(c) === cardKey(card) && JSON.stringify(c) === JSON.stringify(card),
+      );
   }
-  return candidateCards(data, build, level).some(
-    ([c]) => cardKey(c) === cardKey(card) && JSON.stringify(c) === JSON.stringify(card),
-  );
 }

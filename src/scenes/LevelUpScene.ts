@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH, SceneKeys, UiColors } from '../config';
 import type { GameData, GunDef } from '../data/types';
-import type { Card, RunBuild, SlotKind } from '../systems/build';
-import { isOperator, type Pipeline } from '../systems/modPipeline';
-import { barrelSlotTag, describeCard, modDescription, roman, slotLabel } from '../ui/cardText';
+import type { Card, RunBuild, SupportLevels } from '../systems/build';
+import { modDef, type FusionEvent } from '../systems/fusion';
+import type { Pipeline } from '../systems/modPipeline';
+import { barrelSlotTag, describeCard, describeEvents, modColor, modDescription, roman } from '../ui/cardText';
 import { createButton } from '../ui/button';
 import { getGameData } from './gameData';
 
@@ -13,17 +14,22 @@ export interface LevelUpController {
   /** How many more choices are queued after this one. */
   queuedAfter(): number;
   build(): Readonly<RunBuild>;
-  unlocked(kind: SlotKind): number;
-  unlockLevel(kind: SlotKind, slot: number): number;
-  /** Barrel layout and operator targets for the slot view. */
+  /** Open barrel slots at the current level. */
+  unlocked(): number;
+  unlockLevel(slot: number): number;
+  /** Barrel layout, fittings and per-slot strength for the slot view. */
   pipeline(): Pipeline;
   gun(): GunDef;
+  support(): Readonly<SupportLevels>;
   cards(): Card[];
   rerollsLeft(): number;
   reroll(): void;
-  /** Apply a card. A replace card must come with the slot to replace. */
-  pick(card: Card, replaceSlot?: number): void;
+  /** Apply a card. A module card must come with the slot to put it in. */
+  pick(card: Card, slot?: number): void;
   swap(a: number, b: number): void;
+  /** What placing a fresh module in `slot` would do (place / fuse cascade / replace). */
+  previewPlace(slot: number, modId: string): FusionEvent[];
+  previewSwap(a: number, b: number): FusionEvent[];
   /** True while there is another choice to make. */
   hasMore(): boolean;
   close(): void;
@@ -31,18 +37,24 @@ export interface LevelUpController {
 
 const FONT = 'system-ui, sans-serif';
 const CARD_W = 340;
-const CARD_H = 280;
+const CARD_H = 290;
+const SLOT_H = 76;
+const css = (c: number) => '#' + c.toString(16).padStart(6, '0');
 
 /**
- * Level-up workbench (T17): game paused, 3 cards, reroll, and the gun's slots. Click two filled
- * barrel slots to swap them (slot order matters). A "replace" card asks which slot to replace.
+ * Level-up workbench: game paused, 3 cards, reroll, and the gun's barrel.
+ * - Picking a module card enters placement: hover a slot to preview what happens (place, fuse
+ *   and cascade, or replace), click to do it. Replacing asks for a second click. Esc goes back.
+ * - Otherwise click a module, then another slot, to swap them (matches brought together fuse).
  */
 export class LevelUpScene extends Phaser.Scene {
   private ctl!: LevelUpController;
   private gd!: GameData;
   private root!: Phaser.GameObjects.Container;
-  private pendingReplace: Card | null = null;
+  private placing: Extract<Card, { type: 'module' }> | null = null;
+  private confirmReplace: number | null = null;
   private swapFrom: number | null = null;
+  private tip: Phaser.GameObjects.Text | null = null;
 
   constructor() {
     super(SceneKeys.LevelUp);
@@ -50,7 +62,8 @@ export class LevelUpScene extends Phaser.Scene {
 
   init(data: { controller: LevelUpController }): void {
     this.ctl = data.controller;
-    this.pendingReplace = null;
+    this.placing = null;
+    this.confirmReplace = null;
     this.swapFrom = null;
   }
 
@@ -59,14 +72,24 @@ export class LevelUpScene extends Phaser.Scene {
     // The run hides the OS cursor behind its crosshair; cards need a visible pointer.
     this.input.setDefaultCursor('default');
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input.setDefaultCursor('none'));
-    this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.7);
+    this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.72);
     this.root = this.add.container(0, 0);
     this.render();
 
-    const kb = this.input.keyboard;
-    kb?.on('keydown', (e: KeyboardEvent) => {
-      if (this.pendingReplace) {
-        if (e.key === 'Escape') this.cancelReplace();
+    this.input.keyboard?.on('keydown', (e: KeyboardEvent) => {
+      if (this.placing) {
+        // Number keys pick a slot (1 = leftmost); a replace needs the key twice.
+        const slot = Number(e.key) - 1;
+        if (e.key === 'Escape') this.cancelPlacing();
+        else if (slot >= 0 && slot < this.ctl.unlocked()) {
+          this.clickSlot(slot);
+          if (this.placing) this.hoverSlot(slot);
+        }
+        return;
+      }
+      if (e.key === 'Escape' && this.swapFrom !== null) {
+        this.swapFrom = null;
+        this.render();
         return;
       }
       const n = Number(e.key);
@@ -80,32 +103,43 @@ export class LevelUpScene extends Phaser.Scene {
     this.root.removeAll(true);
     const cx = GAME_WIDTH / 2;
     const more = this.ctl.queuedAfter();
-    const title = this.pendingReplace ? 'Choose the slot to replace' : this.ctl.title();
-    this.root.add(this.text(cx, 70, title, 36, UiColors.accent, 'bold').setOrigin(0.5));
-    if (more > 0 && !this.pendingReplace)
-      this.root.add(this.text(cx, 110, `${more} more after this`, 16, UiColors.textDim).setOrigin(0.5));
 
-    if (this.pendingReplace) {
-      const t = describeCard(this.gd, this.pendingReplace);
-      this.root.add(this.text(cx, 200, `${t.name}: ${t.body}`, 20, UiColors.text).setOrigin(0.5));
+    if (this.placing) {
+      const t = describeCard(this.gd, this.placing);
+      this.root.add(this.text(cx, 70, `Place ${t.name}`, 36, css(t.color), 'bold').setOrigin(0.5));
       this.root.add(
-        createButton(this, cx, 280, 'Back', () => this.cancelReplace(), { width: 200, fontSize: 22 }),
+        this.text(cx, 190, t.body, 18, UiColors.text).setOrigin(0.5).setWordWrapWidth(900).setAlign('center'),
+      );
+      this.root.add(
+        this.text(
+          cx,
+          290,
+          'Hover a slot to see what happens, then click it (or press its number).  Next to a match it fuses.',
+          16,
+          UiColors.textDim,
+        ).setOrigin(0.5),
+      );
+      this.root.add(
+        createButton(this, cx, 360, 'Back  [Esc]', () => this.cancelPlacing(), { width: 220, fontSize: 22 }),
       );
     } else {
+      this.root.add(this.text(cx, 60, this.ctl.title(), 36, UiColors.accent, 'bold').setOrigin(0.5));
+      if (more > 0)
+        this.root.add(this.text(cx, 98, `${more} more after this`, 16, UiColors.textDim).setOrigin(0.5));
       const cards = this.ctl.cards();
       cards.forEach((card, i) =>
-        this.drawCard(card, cx + (i - (cards.length - 1) / 2) * (CARD_W + 30), 300, i),
+        this.drawCard(card, cx + (i - (cards.length - 1) / 2) * (CARD_W + 30), 270, i),
       );
       const left = this.ctl.rerollsLeft();
       this.root.add(
-        createButton(this, cx, 490, `Reroll (${left})  [R]`, () => this.doReroll(), {
+        createButton(this, cx, 450, `Reroll (${left})  [R]`, () => this.doReroll(), {
           width: 260,
           fontSize: 22,
           enabled: left > 0,
         }),
       );
     }
-    this.drawSlots(600);
+    this.drawBarrel(585);
   }
 
   private drawCard(card: Card, x: number, y: number, index: number): void {
@@ -118,119 +152,165 @@ export class LevelUpScene extends Phaser.Scene {
     const top = y - CARD_H / 2;
     this.root.add([
       box,
-      this.text(
-        x,
-        top + 22,
-        `[${index + 1}]  ${t.label}`,
-        13,
-        '#' + t.color.toString(16).padStart(6, '0'),
-        'bold',
-      ).setOrigin(0.5),
-      this.text(x, top + 70, t.name, 26, UiColors.text, 'bold').setOrigin(0.5),
-      this.text(x, top + 120, t.body, 17, UiColors.text)
+      this.text(x, top + 20, `[${index + 1}]  ${t.label}`, 13, css(t.color), 'bold').setOrigin(0.5),
+      this.text(x, top + 60, t.name, 26, UiColors.text, 'bold').setOrigin(0.5),
+      this.text(x, top + 98, t.body, 15, UiColors.text)
         .setOrigin(0.5, 0)
-        .setWordWrapWidth(CARD_W - 40)
+        .setWordWrapWidth(CARD_W - 36)
         .setAlign('center'),
     ]);
   }
 
   /**
-   * The gun's slots: barrel (length and chains depend on the gun), magazine and Core Tier.
-   * Barrel slots swap on click; replace mode picks a slot. Tags show the gun's twist (muzzle,
-   * crit chamber, left/right barrel) and arrows show what each operator changes.
+   * The barrel: modules drawn in their colour with their tier, fittings with arrows, and each
+   * slot's strength from fittings / muzzle / crit chamber (×1.4 green, ×0.5 red). Tags show the
+   * gun's twist; a gap separates Double Barrel halves.
    */
-  private drawSlots(y: number): void {
+  private drawBarrel(y: number): void {
     const build = this.ctl.build();
     const pipeline = this.ctl.pipeline();
     const layout = pipeline.layout;
-    const replacing = this.pendingReplace?.type === 'newMod' ? this.pendingReplace.kind : null;
+    const open = this.ctl.unlocked();
+    const n = build.barrel.length;
     const gap = 8;
-    const groupGap = 26;
-    const groups = layout.chains + 1; // barrel chains + magazine
-    const total = build.barrel.length + build.magazine.length;
+    const chainGap = 34;
+    const coreW = 120;
     const boxW = Math.min(
-      140,
-      Math.floor((GAME_WIDTH - 200 - (total - groups) * gap - (groups - 1) * groupGap) / total),
+      124,
+      Math.floor((GAME_WIDTH - 80 - coreW - (n - 1) * gap - (layout.chains - 1) * chainGap) / n),
     );
-    let x = 40;
+    const rowW = n * boxW + (n - 1) * gap + (layout.chains - 1) * chainGap;
+    let x = (GAME_WIDTH - coreW - rowW) / 2;
 
-    this.root.add(
-      this.text(40, y - 62, 'BARREL (left → right)  ·  click two slots to swap', 13, UiColors.textDim),
-    );
+    const hint = this.placing
+      ? 'BARREL  ·  choose a slot'
+      : this.swapFrom !== null
+        ? 'BARREL  ·  click another slot to swap (Esc cancels)'
+        : 'BARREL  ·  click a module, then another slot, to swap';
+    this.root.add(this.text(x, y - 72, hint, 13, UiColors.textDim));
 
-    const box = (kind: SlotKind, i: number, tag: string | null) => {
-      const slots = kind === 'barrel' ? build.barrel : build.magazine;
-      const slot = slots[i] ?? null;
-      const open = this.ctl.unlocked(kind);
-      const locked = i >= open;
+    build.barrel.forEach((slot, i) => {
       const cx = x + boxW / 2;
-      const selectable =
-        replacing === kind ? !locked && slot !== null : kind === 'barrel' && !locked && slot !== null;
-      const selected = kind === 'barrel' && this.swapFrom === i;
+      const locked = i >= open;
+      const def = slot ? modDef(this.gd, slot.id) : null;
+      const color = slot ? modColor(this.gd, slot.id) : 0x3a404b;
+      const selected = this.swapFrom === i || this.confirmReplace === i;
       const rect = this.add
-        .rectangle(cx, y, boxW, 64, locked ? 0x15181d : 0x1f232b)
-        .setStrokeStyle(2, selected ? 0xf2b632 : replacing === kind && selectable ? 0xe0533d : 0x3a404b);
-      let label = locked ? `Lv ${this.ctl.unlockLevel(kind, i)}` : slotLabel(this.gd, kind, slot);
-      if (kind === 'barrel' && slot && isOperator(slot.id)) {
-        const op = pipeline.operators.find((o) => o.slot === i);
-        label += op?.target !== null && op?.target !== undefined ? '  →' : '\n(no target)';
-      }
-      const txt = this.text(
+        .rectangle(cx, y, boxW, SLOT_H, locked ? 0x15181d : slot ? color : 0x1f232b, slot ? 0.28 : 1)
+        .setStrokeStyle(selected ? 4 : 2, selected ? 0xf2b632 : locked ? 0x2a2f38 : color);
+      const lines: string[] = [];
+      if (locked) lines.push(`Lv ${this.ctl.unlockLevel(i)}`);
+      else if (!slot || !def) lines.push('empty');
+      else if (def.family === 'fitting') lines.push(def.name);
+      else lines.push(def.name, roman(slot.tier));
+      const label = this.text(
         cx,
-        y,
-        label,
-        boxW < 120 ? 12 : 13,
+        y - 6,
+        lines.join('\n'),
+        boxW < 110 ? 12 : 13,
         locked ? '#5b6270' : slot ? UiColors.text : UiColors.textDim,
+        slot ? 'bold' : 'normal',
       )
         .setOrigin(0.5)
-        .setWordWrapWidth(boxW - 10)
+        .setWordWrapWidth(boxW - 8)
         .setAlign('center');
-      this.root.add([rect, txt]);
-      if (tag) this.root.add(this.text(cx, y - 44, tag, 11, UiColors.accent, 'bold').setOrigin(0.5));
-      if (selectable) {
+      this.root.add([rect, label]);
+
+      const k = pipeline.strength[i] ?? 1;
+      if (slot && def?.family !== 'fitting' && Math.abs(k - 1) > 1e-6) {
+        this.root.add(
+          this.text(
+            cx,
+            y + SLOT_H / 2 - 12,
+            `×${Math.round(k * 100) / 100}`,
+            12,
+            k > 1 ? '#7be08a' : '#ff7a6b',
+            'bold',
+          ).setOrigin(0.5),
+        );
+      }
+      const tag = barrelSlotTag(layout, i);
+      if (tag)
+        this.root.add(this.text(cx, y - SLOT_H / 2 - 12, tag, 11, UiColors.accent, 'bold').setOrigin(0.5));
+
+      if (!locked) {
         rect.setInteractive({ useHandCursor: true });
-        rect.on(Phaser.Input.Events.GAMEOBJECT_POINTER_UP, () => this.clickSlot(kind, i));
-        if (slot) {
-          const tip = modDescription(this.gd, kind, slot.id, slot.level);
-          rect.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.showTip(tip));
-          rect.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => this.showTip(''));
-        }
+        rect.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OVER, () => this.hoverSlot(i));
+        rect.on(Phaser.Input.Events.GAMEOBJECT_POINTER_OUT, () => this.showTip('', UiColors.textDim));
+        rect.on(Phaser.Input.Events.GAMEOBJECT_POINTER_UP, () => this.clickSlot(i));
       }
       x += boxW + gap;
-    };
-
-    build.barrel.forEach((_, i) => {
-      box('barrel', i, barrelSlotTag(layout, i));
       const endOfChain = (i + 1) % layout.slotsPerChain === 0 && i + 1 < layout.slots;
-      if (endOfChain) x += groupGap - gap;
+      if (endOfChain) x += chainGap - gap;
     });
-    x += groupGap - gap;
-    this.root.add(this.text(x, y - 62, 'MAGAZINE', 13, UiColors.textDim));
-    build.magazine.forEach((_, i) => box('magazine', i, null));
-    x += groupGap - gap;
-    this.root.add(this.text(x, y - 62, 'CORE', 13, UiColors.textDim));
-    this.root.add(this.text(x, y - 10, `Tier ${roman(build.coreTier)}`, 18, UiColors.text, 'bold'));
-    this.tip = this.text(GAME_WIDTH / 2, y + 56, '', 15, UiColors.textDim).setOrigin(0.5);
+
+    x += 24 - gap;
+    this.root.add(this.text(x, y - 72, 'CORE', 13, UiColors.textDim));
+    this.root.add(this.text(x, y - 14, `Tier ${roman(build.coreTier)}`, 20, UiColors.text, 'bold'));
+
+    const support = this.ctl.support();
+    const perks = this.gd.supportPerks.filter((p) => (support[p.id] ?? 0) > 0);
+    if (perks.length > 0)
+      this.root.add(
+        this.text(
+          GAME_WIDTH / 2,
+          GAME_HEIGHT - 22,
+          'Support: ' + perks.map((p) => `${p.name} ${roman(support[p.id]!)}`).join('  ·  '),
+          14,
+          UiColors.textDim,
+        ).setOrigin(0.5),
+      );
+    this.tip = this.text(GAME_WIDTH / 2, y + SLOT_H / 2 + 24, '', 15, UiColors.textDim).setOrigin(0.5);
     this.root.add(this.tip);
   }
 
-  private tip: Phaser.GameObjects.Text | null = null;
-
-  private showTip(s: string): void {
-    this.tip?.setText(s);
+  private showTip(s: string, color: string): void {
+    this.tip?.setText(s).setColor(color);
   }
 
-  private clickSlot(kind: SlotKind, i: number): void {
-    if (this.pendingReplace) {
-      const card = this.pendingReplace;
-      this.pendingReplace = null;
+  /** Placement and swap previews; otherwise the module's description. */
+  private hoverSlot(i: number): void {
+    const slot = this.ctl.build().barrel[i] ?? null;
+    if (this.placing) {
+      const events = this.ctl.previewPlace(i, this.placing.modId);
+      const replace = events.some((e) => e.kind === 'replace');
+      const fuse = events.some((e) => e.kind === 'fuse');
+      let text = describeEvents(this.gd, events);
+      if (replace) text += this.confirmReplace === i ? '   (click again to replace)' : '';
+      this.showTip(text, replace ? UiColors.danger : fuse ? UiColors.accent : UiColors.text);
+      return;
+    }
+    if (this.swapFrom !== null && this.swapFrom !== i) {
+      const events = this.ctl.previewSwap(this.swapFrom, i);
+      this.showTip(
+        events.length ? describeEvents(this.gd, events) : 'Swap',
+        events.length ? UiColors.accent : UiColors.text,
+      );
+      return;
+    }
+    if (slot) this.showTip(modDescription(this.gd, slot.id, slot.tier), UiColors.textDim);
+  }
+
+  private clickSlot(i: number): void {
+    const slot = this.ctl.build().barrel[i] ?? null;
+    if (this.placing) {
+      const events = this.ctl.previewPlace(i, this.placing.modId);
+      if (events.some((e) => e.kind === 'replace') && this.confirmReplace !== i) {
+        this.confirmReplace = i; // a replace throws a module away: ask for a second click
+        this.render();
+        this.hoverSlot(i);
+        return;
+      }
+      const card = this.placing;
+      this.placing = null;
+      this.confirmReplace = null;
       this.ctl.pick(card, i);
       this.afterPick();
       return;
     }
-    if (kind !== 'barrel') return;
-    if (this.swapFrom === null) this.swapFrom = i;
-    else {
+    if (this.swapFrom === null) {
+      if (slot) this.swapFrom = i;
+    } else {
       if (this.swapFrom !== i) this.ctl.swap(this.swapFrom, i);
       this.swapFrom = null;
     }
@@ -238,8 +318,9 @@ export class LevelUpScene extends Phaser.Scene {
   }
 
   private choose(card: Card): void {
-    if (card.type === 'newMod' && card.replace) {
-      this.pendingReplace = card;
+    if (card.type === 'module') {
+      this.placing = card;
+      this.confirmReplace = null;
       this.swapFrom = null;
       this.render();
       return;
@@ -248,8 +329,9 @@ export class LevelUpScene extends Phaser.Scene {
     this.afterPick();
   }
 
-  private cancelReplace(): void {
-    this.pendingReplace = null;
+  private cancelPlacing(): void {
+    this.placing = null;
+    this.confirmReplace = null;
     this.render();
   }
 

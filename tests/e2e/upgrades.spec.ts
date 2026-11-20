@@ -1,13 +1,33 @@
 /**
- * M3: scrap and levelling, the level-up screen (cards, reroll, slot swap), drops and chests.
+ * Levelling and the level-up screen: cards, reroll, placing modules (fusion), swapping slots,
+ * drops and chests.
  */
 import { expect, test, type Page } from '@playwright/test';
-import { clickGame, runState, startRun, trackErrors } from './helpers';
+import type { RunBuild } from '../../src/systems/build';
+import { clickGame, gamePoint, runState, startRun, trackErrors } from './helpers';
 
 const levelUpOpen = (page: Page) =>
   page.waitForFunction(() => window.__svan!.activeScenes().includes('levelUp'), null, { timeout: 3_000 });
 const levelUpClosed = (page: Page) =>
   page.waitForFunction(() => !window.__svan!.activeScenes().includes('levelUp'), null, { timeout: 3_000 });
+const picked = (page: Page) => page.evaluate(() => window.__svan!.run!.state().cardsPicked);
+
+/**
+ * Take card 1. A module card then asks for a slot: '1' puts it in slot 1, and a replace asks for
+ * '1' once more.
+ */
+async function pickFirst(page: Page): Promise<void> {
+  const before = await picked(page);
+  for (let i = 0; i < 3 && (await picked(page)) === before; i++) {
+    await page.keyboard.press('1');
+    await page.waitForTimeout(80);
+  }
+  expect(await picked(page)).toBe(before + 1);
+}
+
+/** Centre of barrel slot `i` on the level-up screen (8 slots, one chain: Long Gun). */
+const SLOT_Y = 585;
+const slotX = (i: number) => 56 + 62 + i * (124 + 8);
 
 test('scrap levels the player up; the game pauses for a card; picking one resumes', async ({ page }) => {
   const errors = trackErrors(page);
@@ -20,7 +40,7 @@ test('scrap levels the player up; the game pauses for a card; picking one resume
   expect((await runState(page)).timeSec, 'paused while choosing').toBe(t0);
   await page.screenshot({ path: test.info().outputPath('level-up.png') });
 
-  await page.keyboard.press('1');
+  await pickFirst(page);
   await levelUpClosed(page);
   const s = await runState(page);
   expect(s.level).toBe(2);
@@ -34,8 +54,7 @@ test('one big pickup queues several level-ups, shown one after another', async (
   await levelUpOpen(page);
   for (let i = 0; i < 3; i++) {
     expect(await page.evaluate(() => window.__svan!.activeScenes().includes('levelUp'))).toBe(true);
-    await page.keyboard.press('1');
-    await page.waitForTimeout(150);
+    await pickFirst(page);
   }
   await levelUpClosed(page);
   expect((await runState(page)).level).toBe(4);
@@ -47,25 +66,52 @@ test('reroll draws a new hand and uses the only charge', async ({ page }) => {
   await levelUpOpen(page);
   await page.keyboard.press('r');
   await page.keyboard.press('r'); // no charges left: ignored
-  await page.keyboard.press('2');
+  await pickFirst(page);
   await levelUpClosed(page);
 });
 
-test('clicking two barrel slots swaps them', async ({ page }) => {
+test('placing a module next to the same one fuses them, with a preview first', async ({ page }) => {
+  const errors = trackErrors(page);
   await startRun(page, 'long_gun');
-  await page.evaluate(() =>
-    window.__svan!.run!.setBuild({
-      barrel: [{ id: 'split_shot', level: 1 }, { id: 'ricochet', level: 2 }, null, null, null, null],
-      magazine: [null, null],
-      coreTier: 1,
-    }),
-  );
-  await page.evaluate(() => window.__svan!.run!.grantScrap(5 + 15 + 25 + 35)); // level 5: barrel slot 2 open
+  await page.evaluate(() => {
+    const run = window.__svan!.run!;
+    const b = run.build();
+    b.barrel[0] = { id: 'ember_shot', tier: 2 };
+    b.barrel[2] = { id: 'thunder_spark', tier: 1 };
+    run.setBuild(b);
+    run.queueHand([{ type: 'module', modId: 'ember_shot', family: 'element', fuses: true }]);
+    run.grantScrap(5);
+  });
   await levelUpOpen(page);
-  // Long Gun: 6 barrel + 2 magazine boxes, 125 px wide with 8 px gaps, starting at x = 40.
-  await clickGame(page, 40 + 62, 600); // slot 1
-  await clickGame(page, 40 + 125 + 8 + 62, 600); // slot 2
-  const build = await page.evaluate(() => window.__svan!.run!.build());
+  await page.keyboard.press('1'); // the Ember Shot card: now choose a slot
+  // Hover slot 2 (between Fire 2 and Thunder 1): the preview shows the cascade.
+  const hover = await gamePoint(page, slotX(1), SLOT_Y);
+  await page.mouse.move(hover.x, hover.y);
+  await page.waitForTimeout(150);
+  await page.screenshot({ path: test.info().outputPath('fusion-preview.png') });
+  await page.mouse.click(hover.x, hover.y);
+  await levelUpClosed(page);
+
+  // Fire 1 + Fire 2 → Fire 3, then + Thunder 1 → Plasma 4 in slot 2; slots 1 and 3 freed.
+  const build: RunBuild = await page.evaluate(() => window.__svan!.run!.build());
+  expect(build.barrel.slice(0, 3)).toEqual([null, { id: 'plasma', tier: 4 }, null]);
+  expect(errors).toEqual([]);
+});
+
+test('clicking a module, then another slot, swaps them', async ({ page }) => {
+  await startRun(page, 'long_gun');
+  await page.evaluate(() => {
+    const run = window.__svan!.run!;
+    const b = run.build();
+    b.barrel[0] = { id: 'split_shot', tier: 1 };
+    b.barrel[1] = { id: 'ricochet', tier: 2 };
+    run.setBuild(b);
+    run.grantScrap(5);
+  });
+  await levelUpOpen(page);
+  await clickGame(page, slotX(0), SLOT_Y);
+  await clickGame(page, slotX(1), SLOT_Y);
+  const build: RunBuild = await page.evaluate(() => window.__svan!.run!.build());
   expect(build.barrel.slice(0, 2).map((s) => s?.id)).toEqual(['ricochet', 'split_shot']);
 });
 
@@ -83,10 +129,10 @@ test('kills drop scrap that flies to the player; an elite drops a Gunsmith chest
   // Choose until the level-up and the chest are both done, then the silver lands too.
   // The chest may land a moment after the first choice, opening its own screen.
   let choices = 0;
-  const deadline = Date.now() + 4_000;
+  const deadline = Date.now() + 5_000;
   while (choices < 2 && Date.now() < deadline) {
     if (await page.evaluate(() => window.__svan!.activeScenes().includes('levelUp'))) {
-      await page.keyboard.press('1');
+      await pickFirst(page);
       choices++;
     }
     await page.waitForTimeout(150);
@@ -102,10 +148,7 @@ test('C opens the build sheet (perks, stats, gun) and pauses the run; C closes i
   await startRun(page, 'scrap_smg', 7);
   await page.evaluate(() => window.__svan!.run!.grantScrap(5 + 15 + 25 + 35 + 45)); // five level-ups
   await levelUpOpen(page);
-  for (let i = 0; i < 5; i++) {
-    await page.keyboard.press('1');
-    await page.waitForTimeout(120);
-  }
+  for (let i = 0; i < 5; i++) await pickFirst(page);
   await levelUpClosed(page);
 
   await page.keyboard.press('c');
@@ -122,17 +165,27 @@ test('C opens the build sheet (perks, stats, gun) and pauses the run; C closes i
 
 for (const gunId of ['long_gun', 'double_barrel', 'scrap_smg'] as const) {
   test(`${gunId}: the level-up screen shows this gun's barrel layout`, async ({ page }) => {
+    const errors = trackErrors(page);
     await startRun(page, gunId, 3);
-    await page.evaluate((g) => {
+    await page.evaluate(() => {
       const run = window.__svan!.run!;
       const b = run.build();
-      const ids = ['ember_shot', 'amplifier', 'thunder_spark', 'echo', 'split_shot', 'ricochet'];
-      b.barrel = b.barrel.map((_, i) => (ids[i] ? { id: ids[i]!, level: 1 } : null));
-      if (g === 'scrap_smg') b.barrel[3] = { id: 'piercing_bore', level: 1 };
+      const mods = [
+        { id: 'ember_shot', tier: 3 },
+        { id: 'overcharger', tier: 1 },
+        { id: 'thunder_spark', tier: 1 },
+        { id: 'booster_right', tier: 1 },
+        { id: 'plasma', tier: 5 },
+        { id: 'twin_shot', tier: 2 },
+        { id: 'brace', tier: 1 },
+        { id: 'heavy_slug', tier: 1 },
+      ];
+      b.barrel = b.barrel.map((_, i) => mods[i] ?? null);
       run.setBuild(b);
-      run.grantScrap(5);
-    }, gunId);
+      run.grantScrap(5 + 15 + 25 + 35 + 45 + 55 + 65 + 75 + 85 + 95 + 105 + 115); // all slots open
+    });
     await levelUpOpen(page);
     await page.screenshot({ path: test.info().outputPath(`slots-${gunId}.png`) });
+    expect(errors).toEqual([]);
   });
 }

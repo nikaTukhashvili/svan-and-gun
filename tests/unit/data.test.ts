@@ -27,14 +27,15 @@ describe('game data files', () => {
   it('matches the GDD Phase 1 scope', () => {
     const d = loadGameData();
     expect(d.guns.map((g) => g.id)).toEqual(['long_gun', 'double_barrel', 'scrap_smg']);
-    expect(d.barrelMods).toHaveLength(13); // 9 mods + 4 operators
-    expect(d.magazineMods).toHaveLength(6);
+    // 3 elements + 3 hybrids + 6 grey + 5 fittings (GDD: Barrel fusion)
+    const count = (f: string) => d.barrelMods.filter((m) => m.family === f).length;
+    expect([count('element'), count('hybrid'), count('grey'), count('fitting')]).toEqual([3, 3, 6, 5]);
+    expect(d.supportPerks).toHaveLength(6);
     expect(d.enemies).toHaveLength(5);
     expect(d.buffs).toHaveLength(12);
     // Every slot is open from the start, so the barrel order is the player's plan, not the level's.
-    expect(d.config.slots.barrelUnlockLevels).toEqual([1]);
-    expect(d.config.slots.magazineUnlockLevels).toEqual([1]);
-    for (const g of d.guns) expect(g.barrel.slots + g.magazineSlots).toBeLessThanOrEqual(12);
+    expect(d.config.slots.barrelUnlockLevels[0]).toBe(1);
+    for (const g of d.guns) expect(g.barrel.slots).toBeLessThanOrEqual(d.config.slots.maxTotalSlots);
     const boss = d.timeline.events.find((e) => e.type === 'boss');
     expect(boss?.at).toBe(330);
   });
@@ -70,7 +71,7 @@ describe('data validation errors', () => {
 
   it('rejects mod parameters that do not belong to that mod', () => {
     const p = problemsAfter((f) => {
-      f.barrelMods[0].levels[0] = { chains: 2, radius: 4, damageFactor: 0.5 };
+      f.barrelMods[0].base = { chains: 2, radius: 4, damageFactor: 0.5 };
     });
     expect(p.some((x) => x.startsWith('barrelMods.json'))).toBe(true);
   });
@@ -96,11 +97,22 @@ describe('data validation errors', () => {
     expect(p).toContain('drops.json > scrapByEnemy: missing enemy "kaji"');
   });
 
-  it('catches a mod with the wrong number of levels', () => {
+  it('catches a hybrid made of one element twice, and a missing hybrid for a pair', () => {
     const p = problemsAfter((f) => {
-      f.magazineMods[0].levels.pop();
+      const plasma = f.barrelMods.find((m: Loose) => m.id === 'plasma');
+      plasma.parents = ['fire', 'fire'];
     });
-    expect(p).toContainEqual(expect.stringContaining('extended_mag: has 2 levels'));
+    expect(p).toContainEqual(expect.stringContaining('plasma: a hybrid needs two different parent elements'));
+    expect(p).toContainEqual(
+      expect.stringContaining('elements fire + lightning need exactly one hybrid, found 0'),
+    );
+  });
+
+  it('catches a support perk placeholder missing from a level', () => {
+    const p = problemsAfter((f) => {
+      f.supportPerks[0].description = 'Bigger by {nope}';
+    });
+    expect(p).toContainEqual(expect.stringContaining('extended_mag: description uses {nope}'));
   });
 
   it('catches a description placeholder missing from the level data', () => {

@@ -3,7 +3,7 @@ import { EventBus } from '../../src/core/eventBus';
 import type { GameEvents } from '../../src/core/events';
 import { u } from '../../src/core/math';
 import { RNG } from '../../src/core/rng';
-import { createBuild, findMod, setSlot } from '../../src/systems/build';
+import { createBuild, setSlot } from '../../src/systems/build';
 import { EnemySystem } from '../../src/systems/enemies';
 import { ObstacleField } from '../../src/systems/obstacles';
 import { dummyEnemyDef } from '../../src/systems/playground';
@@ -77,16 +77,13 @@ describe('Training Ground dummies', () => {
 });
 
 describe('setSlot (Training Ground build editing)', () => {
-  it('puts a mod at a level, moves it if it was already in another slot, and empties with null', () => {
-    const b = createBuild({ barrel: 4, magazine: 2 });
-    const id = data.barrelMods[0]!.id;
-    setSlot(b, 'barrel', 2, { id, level: 3 });
-    expect(b.barrel[2]).toEqual({ id, level: 3 });
-    setSlot(b, 'barrel', 0, { id, level: 1 });
-    expect(findMod(b, 'barrel', id)).toBe(0);
-    expect(b.barrel[2]).toBeNull();
-    setSlot(b, 'barrel', 0, null);
-    expect(b.barrel).toEqual([null, null, null, null]);
-    expect(() => setSlot(b, 'magazine', 5, null)).toThrow();
+  it('puts a module at a tier without fusing, and empties with null', () => {
+    const b = createBuild(4);
+    setSlot(b, 1, { id: 'ember_shot', tier: 5 });
+    setSlot(b, 2, { id: 'ember_shot', tier: 1 }); // next to a match: still no fusion
+    expect(b.barrel).toEqual([null, { id: 'ember_shot', tier: 5 }, { id: 'ember_shot', tier: 1 }, null]);
+    setSlot(b, 1, null);
+    expect(b.barrel[1]).toBeNull();
+    expect(() => setSlot(b, 9, null)).toThrow();
   });
 });

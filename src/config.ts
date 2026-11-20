@@ -34,7 +34,7 @@ export const DATA_FILES = [
   'config',
   'guns',
   'barrelMods',
-  'magazineMods',
+  'supportPerks',
   'enemies',
   'boss',
   'timeline',

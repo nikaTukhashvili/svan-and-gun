@@ -1,293 +1,273 @@
 [
   {
     "id": "ember_shot",
-    "name": "Ember Shot",
+    "family": "element",
     "element": "fire",
-    "hooks": ["onHit"],
+    "name": "Ember Shot",
     "description": "Each hit adds a burn stack: {dps} damage per second for {durationSec} s. Up to {maxStacks} stacks.",
-    "levels": [
-      {
-        "dps": 3,
-        "durationSec": 3,
-        "maxStacks": 5
-      },
-      {
-        "dps": 3,
-        "durationSec": 3,
-        "maxStacks": 7
-      },
-      {
-        "dps": 3,
-        "durationSec": 3,
-        "maxStacks": 9
-      }
-    ]
+    "color": "#e0533d",
+    "base": {
+      "dps": 3,
+      "durationSec": 3,
+      "maxStacks": 5
+    },
+    "perTier": {
+      "dps": 0,
+      "durationSec": 0,
+      "maxStacks": 2
+    }
   },
   {
     "id": "venom_shot",
-    "name": "Venom Shot",
+    "family": "element",
     "element": "poison",
-    "hooks": ["onHit"],
+    "name": "Venom Shot",
     "description": "Poisons for {dps} damage per second for {durationSec} s. On death the poison spreads to {spreadTargets} enemies within {spreadRadius} units.",
-    "levels": [
-      {
-        "dps": 8,
-        "durationSec": 6,
-        "spreadTargets": 2,
-        "spreadRadius": 3
-      },
-      {
-        "dps": 8,
-        "durationSec": 6,
-        "spreadTargets": 3,
-        "spreadRadius": 3
-      },
-      {
-        "dps": 8,
-        "durationSec": 6,
-        "spreadTargets": 4,
-        "spreadRadius": 3
-      }
-    ]
+    "color": "#5fc46a",
+    "base": {
+      "dps": 8,
+      "durationSec": 6,
+      "spreadTargets": 2,
+      "spreadRadius": 3
+    },
+    "perTier": {
+      "dps": 0,
+      "durationSec": 0,
+      "spreadTargets": 1,
+      "spreadRadius": 0
+    }
   },
   {
     "id": "thunder_spark",
-    "name": "Thunder Spark",
+    "family": "element",
     "element": "lightning",
-    "hooks": ["onHit"],
+    "name": "Thunder Spark",
     "description": "Each hit chains to {chains} more enemies within {radius} units.",
-    "levels": [
-      {
-        "chains": 2,
-        "radius": 4,
-        "damageFactor": 0.5
-      },
-      {
-        "chains": 3,
-        "radius": 4,
-        "damageFactor": 0.5
-      },
-      {
-        "chains": 4,
-        "radius": 4,
-        "damageFactor": 0.5
-      }
-    ]
+    "color": "#f2d23a",
+    "base": {
+      "chains": 2,
+      "radius": 4,
+      "damageFactor": 0.5
+    },
+    "perTier": {
+      "chains": 1,
+      "radius": 0,
+      "damageFactor": 0
+    }
+  },
+  {
+    "id": "plasma",
+    "family": "hybrid",
+    "parents": ["fire", "lightning"],
+    "name": "Plasma",
+    "description": "Each hit chains to {chains} more enemies within {radius} units, and every enemy it reaches burns for {burnDps} damage per second for {burnSec} s.",
+    "color": "#ff8a3d",
+    "base": {
+      "chains": 2,
+      "radius": 4,
+      "damageFactor": 0.6,
+      "burnDps": 4,
+      "burnSec": 3,
+      "maxStacks": 5
+    },
+    "perTier": {
+      "chains": 1,
+      "radius": 0,
+      "damageFactor": 0.05,
+      "burnDps": 1.5,
+      "burnSec": 0,
+      "maxStacks": 1
+    }
+  },
+  {
+    "id": "brimstone",
+    "family": "hybrid",
+    "parents": ["fire", "poison"],
+    "name": "Brimstone",
+    "description": "Hits burn for {burnDps} and poison for {poisonDps} damage per second. An enemy that dies burning and poisoned bursts for {blastDamage} damage in {blastRadius} units.",
+    "color": "#c98a2e",
+    "base": {
+      "burnDps": 4,
+      "burnSec": 3,
+      "maxStacks": 5,
+      "poisonDps": 9,
+      "poisonSec": 6,
+      "blastDamage": 20,
+      "blastRadius": 2.5
+    },
+    "perTier": {
+      "burnDps": 1.5,
+      "burnSec": 0,
+      "maxStacks": 1,
+      "poisonDps": 3,
+      "poisonSec": 0,
+      "blastDamage": 8,
+      "blastRadius": 0.25
+    }
+  },
+  {
+    "id": "blight_arc",
+    "family": "hybrid",
+    "parents": ["poison", "lightning"],
+    "name": "Blight Arc",
+    "description": "Each hit chains to {chains} more enemies within {radius} units and poisons every enemy it reaches for {poisonDps} damage per second for {poisonSec} s.",
+    "color": "#3fbfa0",
+    "base": {
+      "chains": 2,
+      "radius": 4,
+      "damageFactor": 0.6,
+      "poisonDps": 9,
+      "poisonSec": 6
+    },
+    "perTier": {
+      "chains": 1,
+      "radius": 0,
+      "damageFactor": 0.05,
+      "poisonDps": 3,
+      "poisonSec": 0
+    }
   },
   {
     "id": "twin_shot",
+    "family": "grey",
     "name": "Twin Shot",
-    "element": null,
-    "hooks": ["onFire"],
     "description": "Fires {bullets} bullets instead of 1.",
-    "levels": [
-      {
-        "bullets": 2,
-        "damageFactor": 0.65,
-        "spreadDeg": 8
-      },
-      {
-        "bullets": 2,
-        "damageFactor": 0.75,
-        "spreadDeg": 8
-      },
-      {
-        "bullets": 3,
-        "damageFactor": 0.75,
-        "spreadDeg": 12
-      }
-    ]
+    "color": "#a7adb7",
+    "base": {
+      "bullets": 2,
+      "damageFactor": 0.65,
+      "spreadDeg": 8
+    },
+    "perTier": {
+      "bullets": 0.5,
+      "damageFactor": 0.05,
+      "spreadDeg": 2
+    }
   },
   {
     "id": "ricochet",
+    "family": "grey",
     "name": "Ricochet",
-    "element": null,
-    "hooks": ["onHit"],
     "description": "When the bullet would stop, it bounces to {bounces} nearby enemies.",
-    "levels": [
-      {
-        "bounces": 1,
-        "radius": 5,
-        "damageFactor": 1
-      },
-      {
-        "bounces": 2,
-        "radius": 5,
-        "damageFactor": 1
-      },
-      {
-        "bounces": 3,
-        "radius": 5,
-        "damageFactor": 1
-      }
-    ]
+    "color": "#a7adb7",
+    "base": {
+      "bounces": 1,
+      "radius": 5,
+      "damageFactor": 1
+    },
+    "perTier": {
+      "bounces": 1,
+      "radius": 0,
+      "damageFactor": 0
+    }
   },
   {
     "id": "long_rifling",
+    "family": "grey",
     "name": "Long Rifling",
-    "element": null,
-    "hooks": ["onFire"],
     "description": "Bullet speed and range up.",
-    "levels": [
-      {
-        "speedBonus": 0.5,
-        "rangeBonus": 0.3
-      },
-      {
-        "speedBonus": 0.7,
-        "rangeBonus": 0.3
-      },
-      {
-        "speedBonus": 0.9,
-        "rangeBonus": 0.3
-      }
-    ]
+    "color": "#a7adb7",
+    "base": {
+      "speedBonus": 0.5,
+      "rangeBonus": 0.3
+    },
+    "perTier": {
+      "speedBonus": 0.2,
+      "rangeBonus": 0
+    }
   },
   {
     "id": "piercing_bore",
+    "family": "grey",
     "name": "Piercing Bore",
-    "element": null,
-    "hooks": ["onFire"],
     "description": "Bullets pass through {pierce} more enemies.",
-    "levels": [
-      {
-        "pierce": 1
-      },
-      {
-        "pierce": 2
-      },
-      {
-        "pierce": 3
-      }
-    ]
+    "color": "#a7adb7",
+    "base": {
+      "pierce": 1
+    },
+    "perTier": {
+      "pierce": 1
+    }
   },
   {
     "id": "heavy_slug",
+    "family": "grey",
     "name": "Heavy Slug",
-    "element": null,
-    "hooks": ["stats", "onFire"],
     "description": "Bigger damage and knockback, slower fire rate.",
-    "levels": [
-      {
-        "damageBonus": 0.4,
-        "fireRatePenalty": 0.15,
-        "knockbackBonus": 0.5
-      },
-      {
-        "damageBonus": 0.55,
-        "fireRatePenalty": 0.15,
-        "knockbackBonus": 0.5
-      },
-      {
-        "damageBonus": 0.7,
-        "fireRatePenalty": 0.15,
-        "knockbackBonus": 0.5
-      }
-    ]
+    "color": "#a7adb7",
+    "base": {
+      "damageBonus": 0.4,
+      "fireRatePenalty": 0.15,
+      "knockbackBonus": 0.5
+    },
+    "perTier": {
+      "damageBonus": 0.15,
+      "fireRatePenalty": 0,
+      "knockbackBonus": 0
+    }
   },
   {
     "id": "split_shot",
+    "family": "grey",
     "name": "Split Shot",
-    "element": null,
-    "hooks": ["onHit"],
     "description": "On hit, splits into {shards} shards.",
-    "levels": [
-      {
-        "shards": 3,
-        "damageFactor": 0.3,
-        "arcDeg": 60,
-        "range": 4
-      },
-      {
-        "shards": 4,
-        "damageFactor": 0.3,
-        "arcDeg": 70,
-        "range": 4
-      },
-      {
-        "shards": 5,
-        "damageFactor": 0.3,
-        "arcDeg": 80,
-        "range": 4
-      }
-    ]
+    "color": "#a7adb7",
+    "base": {
+      "shards": 3,
+      "damageFactor": 0.3,
+      "arcDeg": 60,
+      "range": 4
+    },
+    "perTier": {
+      "shards": 1,
+      "damageFactor": 0,
+      "arcDeg": 10,
+      "range": 0
+    }
   },
   {
-    "id": "amplifier",
-    "name": "Amplifier",
-    "element": null,
-    "hooks": ["operator"],
-    "description": "Operator: the mod to its right works {mult}x as strong.",
-    "levels": [
-      {
-        "mult": 2
-      },
-      {
-        "mult": 2.5
-      },
-      {
-        "mult": 3
-      }
-    ]
+    "id": "booster_right",
+    "family": "fitting",
+    "name": "Booster ▶",
+    "description": "The module to the right works {right} stronger.",
+    "color": "#6aa8ff",
+    "left": 0,
+    "right": 0.4
   },
   {
-    "id": "every_nth",
-    "name": "Hammer Spring",
-    "element": null,
-    "hooks": ["operator"],
-    "description": "Operator: the mod to its right only works on every {n}th shot, but {mult}x as strong.",
-    "levels": [
-      {
-        "n": 4,
-        "mult": 3
-      },
-      {
-        "n": 3,
-        "mult": 3
-      },
-      {
-        "n": 3,
-        "mult": 4
-      }
-    ]
+    "id": "booster_left",
+    "family": "fitting",
+    "name": "◀ Booster",
+    "description": "The module to the left works {left} stronger.",
+    "color": "#6aa8ff",
+    "left": 0.4,
+    "right": 0
   },
   {
-    "id": "on_kill",
-    "name": "Death Trigger",
-    "element": null,
-    "hooks": ["operator"],
-    "description": "Operator: the mod to its right only triggers when a hit kills, but {mult}x as strong.",
-    "levels": [
-      {
-        "mult": 3
-      },
-      {
-        "mult": 4
-      },
-      {
-        "mult": 5
-      }
-    ]
+    "id": "brace",
+    "family": "fitting",
+    "name": "◀ Brace ▶",
+    "description": "Both neighbours work {left} stronger.",
+    "color": "#6aa8ff",
+    "left": 0.2,
+    "right": 0.2
   },
   {
-    "id": "echo",
-    "name": "Echo Chamber",
-    "element": null,
-    "hooks": ["operator"],
-    "description": "Operator: the mod to its right triggers again {delaySec} s later at {strength}x strength.",
-    "levels": [
-      {
-        "delaySec": 0.5,
-        "strength": 0.5
-      },
-      {
-        "delaySec": 0.5,
-        "strength": 0.75
-      },
-      {
-        "delaySec": 0.4,
-        "strength": 1
-      }
-    ]
+    "id": "overcharger",
+    "family": "fitting",
+    "name": "Overcharger",
+    "description": "Left neighbour {left} stronger, right neighbour {right} weaker.",
+    "color": "#c98bff",
+    "left": 1,
+    "right": -0.5
+  },
+  {
+    "id": "siphon",
+    "family": "fitting",
+    "name": "Siphon",
+    "description": "Right neighbour {right} stronger, left neighbour {left} weaker.",
+    "color": "#c98bff",
+    "left": -0.4,
+    "right": 0.8
   }
 ]

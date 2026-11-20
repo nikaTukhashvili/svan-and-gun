@@ -12,15 +12,29 @@ export interface LightningArc {
   y1: number;
 }
 
+/** Brimstone burst: where it went off, for the effects layer. */
+export interface Blast {
+  x: number;
+  y: number;
+  radius: number;
+}
+
 export class StatusEffectSystem {
   private tickTimer = 0;
   private readonly scratch: Enemy[] = [];
+  /** Brimstone: an enemy that dies burning AND poisoned bursts (px radius). Set from the pipeline. */
+  deathBlast: { damage: number; radius: number } | null = null;
+  /** Bursts since the scene last drained this list. */
+  readonly blasts: Blast[] = [];
 
   constructor(
     private readonly enemies: EnemySystem,
     private readonly tickSec: number,
   ) {
-    enemies.onKill = (e) => this.spreadPoison(e);
+    enemies.onKill = (e) => {
+      this.blast(e);
+      this.spreadPoison(e);
+    };
   }
 
   /** Ember Shot: +1 burn stack (up to maxStacks), timer refreshed. */
@@ -55,7 +69,15 @@ export class StatusEffectSystem {
    * Thunder Spark: hit up to `chains` more enemies near `from` for `damage` each (defence
    * applies). Never hits the same enemy twice in one chain. Arcs are appended to `arcs`.
    */
-  chainLightning(from: Enemy, chains: number, radius: number, damage: number, arcs: LightningArc[]): void {
+  chainLightning(
+    from: Enemy,
+    chains: number,
+    radius: number,
+    damage: number,
+    arcs: LightningArc[],
+    /** Hybrids: called for each enemy the chain reaches, before its damage. */
+    onReach?: (e: Enemy) => void,
+  ): void {
     const hit = new Set<number>([from.uid]);
     let x = from.x;
     let y = from.y;
@@ -66,6 +88,7 @@ export class StatusEffectSystem {
       arcs.push({ x0: x, y0: y, x1: next.x, y1: next.y });
       x = next.x;
       y = next.y;
+      onReach?.(next);
       this.enemies.damage(next, damage, false);
     }
   }
@@ -92,6 +115,16 @@ export class StatusEffectSystem {
         e.poisonTime -= t;
       }
       if (damage > 0) this.enemies.damage(e, damage, true, true);
+    }
+  }
+
+  /** Brimstone: a burning, poisoned enemy bursts on death (damage ignores defence). */
+  private blast(dead: Enemy): void {
+    const b = this.deathBlast;
+    if (!b || dead.burnStacks <= 0 || dead.poisonTime <= 0) return;
+    this.blasts.push({ x: dead.x, y: dead.y, radius: b.radius });
+    for (const e of this.enemies.inRadius(dead.x, dead.y, b.radius, [])) {
+      if (e !== dead) this.enemies.damage(e, b.damage, true, true);
     }
   }
 
