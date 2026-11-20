@@ -5,9 +5,9 @@
     {
       "id": "gods",
       "name": "Favor of the Gods",
-      "description": "Elements for the barrel, and blessings that raise your stats for this run.",
+      "description": "Elements, Mutations into hybrids, and blessings for this run.",
       "color": "#f2d23a",
-      "types": ["element", "runStat"]
+      "types": ["element", "runStat", "mutation"]
     },
     {
       "id": "gunsmith",
@@ -28,9 +28,9 @@
     "runStat": 3,
     "supportPerk": 2,
     "muzzle": 2,
-    "tinker": 1
+    "tinker": 1,
+    "mutation": 4
   },
-  "fusesWithOwnedMult": 3,
   "rarity": {
     "weights": {
       "common": 70,
@@ -153,5 +153,6 @@
         "epic": 0.25
       }
     }
-  ]
+  ],
+  "upgradesOwnedMult": 3
 }

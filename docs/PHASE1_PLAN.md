@@ -230,3 +230,11 @@ _Add dated notes here as tasks complete (decisions, deviations, follow-ups)._
 - Hybrids: Steam (fire + frost: burn, chill, steam burst on freeze), Frostbite (poison + frost: poison ×2 on chilled enemies), Hailstorm (lightning + frost: chains chill everyone reached). 21 barrel modules now (4 elements, 6 hybrids).
 - Visuals: chilled enemies tinted blue, frozen ones filled ice-white, a pale flash when one freezes.
 - Tests: `tests/unit/frost.test.ts`.
+
+**2026-11-21 · No automatic merging; upgrades by drop; Mutation (branch `barrel-fusion`)**
+
+- Playtest: modules merging by themselves took control away, and hybrids came too early and too strong.
+- Nothing merges by itself. A module card dropped onto the same module upgrades it one tier. Elements cap at tier V (`config.slots.maxElementTier`); grey modules have no cap.
+- Mutation (new Favor of the Gods card, `typeWeights.mutation`): dragged onto two different elements at tier V side by side, they become their hybrid at tier V; offered only when such a pair exists. Hybrids are final.
+- Moving a module only moves or swaps it. `cards.fusesWithOwnedMult` → `upgradesOwnedMult`; module cards say CAN UPGRADE. Tinker only raises modules below their max.
+- Tests: `fusion.test.ts` rewritten; Mutation in `build.test.ts`; e2e upgrade-by-drop and Mutation drag.

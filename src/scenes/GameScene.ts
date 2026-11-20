@@ -23,7 +23,7 @@ import {
 import { BulletSystem, REDIRECTED, type Bullet } from '../systems/bullets';
 import { Destructibles, type Destructible } from '../systems/destructibles';
 import { applyOnFire, buildPipeline, HitResolver, layoutOf, type Pipeline } from '../systems/modPipeline';
-import { previewMove, previewPlace } from '../systems/fusion';
+import { previewMutate, previewPlace } from '../systems/fusion';
 import { moveMuzzle, previewMuzzle } from '../systems/muzzle';
 import { PickupSystem, rollCrateDrop, rollEnemyDrops, type Drop, type Pickup } from '../systems/pickups';
 import { Progression } from '../systems/progression';
@@ -47,7 +47,7 @@ import { PickupView } from './game/PickupView';
 import { Playground } from './game/Playground';
 import { ProjectileView } from './game/ProjectileView';
 import type { HudModel } from './HudScene';
-import type { LevelUpController } from './LevelUpScene';
+import { MUTATION_CHIP, type LevelUpController } from './LevelUpScene';
 import type { PauseController } from './PauseScene';
 import { EQUIPMENT_SLOTS, type BuildSheetData, type SheetLine } from './BuildSheetScene';
 import type { ResultsData } from './ResultsScene';
@@ -75,10 +75,10 @@ export interface PlaygroundOptions {
 
 const BULLET_RADIUS = 4;
 
-/** A tier-1 module card for a module id (Training Ground "fuse on place"). */
+/** A tier-1 module card for a module id (Training Ground "place like a card"). */
 function moduleCard(d: GameData, modId: string): Card {
   const def = d.barrelMods.find((m) => m.id === modId)!;
-  return { type: 'module', modId, family: def.family, fuses: false };
+  return { type: 'module', modId, family: def.family, upgrades: false };
 }
 const ENEMY_PROJECTILE_RADIUS = 6;
 const MAP_KEY = 'level1';
@@ -607,6 +607,7 @@ export class GameScene extends Phaser.Scene {
       this.run.support,
       undefined,
       path,
+      this.gun,
     );
   }
 
@@ -630,7 +631,7 @@ export class GameScene extends Phaser.Scene {
       },
       previewPlace: (slot, modId) =>
         previewPlace(d, this.run.build, this.layout(), slot, { id: modId, tier: 1 }, this.openSlots()).events,
-      previewMove: (a, b) => previewMove(d, this.run.build, this.layout(), a, b).events,
+      previewMutate: (slot, side) => previewMutate(d, this.run.build, this.layout(), slot, side),
       previewMuzzle: (slot, id) => previewMuzzle(this.run.build.muzzle, slot, id),
       moveMuzzle: (a, b) => {
         moveMuzzle(this.run.build.muzzle, a, b);
@@ -648,8 +649,8 @@ export class GameScene extends Phaser.Scene {
         this.run.rerollsUsed++;
         this.hand = this.drawHand();
       },
-      pick: (card, slot) => {
-        const events = applyCard(d, this.gun, this.run, card, slot, this.openSlots());
+      pick: (card, slot, side) => {
+        const events = applyCard(d, this.gun, this.run, card, slot, this.openSlots(), side);
         this.cardsPicked++;
         if (card.type === 'runStat') {
           this.run.picks.push({
@@ -669,7 +670,7 @@ export class GameScene extends Phaser.Scene {
             modId: result?.id ?? card.modId,
             slot,
             tier: result?.tier ?? 1,
-            fused: events.some((e) => e.kind === 'fuse'),
+            fused: events.some((e) => e.kind === 'upgrade'),
           });
         }
         if (this.progression.pending > 0) this.progression.consume();
@@ -679,7 +680,7 @@ export class GameScene extends Phaser.Scene {
         return events;
       },
       move: (a, b) => {
-        const events = swapSlots(d, this.gun, this.run.build, a, b);
+        const events = swapSlots(this.run.build, a, b);
         this.refreshStats();
         return events;
       },
@@ -1087,11 +1088,11 @@ export class GameScene extends Phaser.Scene {
       cards: () => [],
       rerollsLeft: () => 0,
       reroll: () => {},
-      pick: (card, slot) => changed(applyCard(d, this.gun, this.run, card, slot, all())),
-      move: (a, b) => changed(swapSlots(d, this.gun, this.run.build, a, b)),
+      pick: (card, slot, side) => changed(applyCard(d, this.gun, this.run, card, slot, all(), side)),
+      move: (a, b) => changed(swapSlots(this.run.build, a, b)),
       previewPlace: (slot, modId) =>
         previewPlace(d, this.run.build, this.layout(), slot, { id: modId, tier: 1 }, all()).events,
-      previewMove: (a, b) => previewMove(d, this.run.build, this.layout(), a, b).events,
+      previewMutate: (slot, side) => previewMutate(d, this.run.build, this.layout(), slot, side),
       previewMuzzle: (slot, id) => previewMuzzle(this.run.build.muzzle, slot, id),
       moveMuzzle: (a, b) => changed(moveMuzzle(this.run.build.muzzle, a, b)),
       hasMore: () => true,
@@ -1100,7 +1101,7 @@ export class GameScene extends Phaser.Scene {
         if (panelWasOpen) this.pg?.panel?.toggle();
         this.scene.resume();
       },
-      palette: () => [...d.barrelMods.map((m) => m.id), ...d.muzzles.pieces.map((m) => m.id)],
+      palette: () => [...d.barrelMods.map((m) => m.id), MUTATION_CHIP, ...d.muzzles.pieces.map((m) => m.id)],
       remove: (slot) => {
         this.run.build.barrel[slot] = null;
         changed(null);
@@ -1193,12 +1194,8 @@ export class GameScene extends Phaser.Scene {
         }),
       swap: (a, b, fuse) =>
         change(() => {
-          if (fuse) swapSlots(this.gd, this.gun, this.run.build, a, b);
-          else {
-            const t = this.run.build.barrel[a] ?? null;
-            this.run.build.barrel[a] = this.run.build.barrel[b] ?? null;
-            this.run.build.barrel[b] = t;
-          }
+          void fuse; // moving never merges
+          swapSlots(this.run.build, a, b);
         }),
       setMuzzle: (i, slot) =>
         change(() => {

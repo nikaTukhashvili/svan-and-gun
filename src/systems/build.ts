@@ -5,14 +5,24 @@
  *
  * CardDraw builds the list of VALID cards first and only then picks (TDD: CardDraw algorithm):
  * - module cards are always valid (tiers have no cap; a full barrel can still fuse or replace);
- * - a module that would fuse with one already in the barrel weighs more (cards.fusesWithOwnedMult);
+ * - a module that could upgrade one already in the barrel weighs more (cards.upgradesOwnedMult);
+ * - Mutation only when two maxed, different elements sit side by side;
  * - Core Tier only below the max tier; a support perk only below its max level;
  * - Tinker only when the barrel has a module that can go up a tier;
  * - muzzle cards are always valid (same piece = upgrade, else fit or replace).
  */
 import type { RNG } from '../core/rng';
 import type { CardType, GameData, GunDef, ModFamily, Rarity, StatId, StatMode } from '../data/types';
-import { fusesWithOwned, modDef, moveModule, place, type FusionEvent } from './fusion';
+import {
+  maxTier,
+  moveModule,
+  mutate,
+  mutationPairs,
+  place,
+  upgradesOwned,
+  type FusionEvent,
+  type Side,
+} from './fusion';
 import { layoutOf } from './modPipeline';
 import { placeMuzzle, type MuzzleSlot } from './muzzle';
 import { addBonus, type StatBonuses } from './stats';
@@ -35,7 +45,10 @@ export type SupportLevels = Record<string, number>;
 
 export type Card =
   /** A fresh tier-1 module; the player picks the slot (place / fuse / replace). */
-  | { type: 'module'; modId: string; family: ModFamily; fuses: boolean }
+  /** `upgrades`: dropping it on a module already in the barrel would upgrade that one. */
+  | { type: 'module'; modId: string; family: ModFamily; upgrades: boolean }
+  /** Mutation: drag onto two maxed, different elements side by side to make their hybrid. */
+  | { type: 'mutation' }
   | { type: 'coreTier'; toTier: number }
   | { type: 'runStat'; cardId: string; rarity: Rarity; stat: StatId; mode: StatMode; value: number }
   | { type: 'supportPerk'; perkId: string; toLevel: number }
@@ -87,6 +100,7 @@ export function cardType(card: Card): CardType {
       return card.family;
     case 'randomUpgrade':
       return 'tinker';
+    case 'mutation':
     case 'coreTier':
     case 'runStat':
     case 'supportPerk':
@@ -116,6 +130,8 @@ export function cardKey(c: Card): string {
       return `support:${c.perkId}`;
     case 'muzzle':
       return `muzzle:${c.muzzleId}`;
+    case 'mutation':
+      return 'mutation';
     case 'randomUpgrade':
       return 'tinker';
   }
@@ -123,23 +139,27 @@ export function cardKey(c: Card): string {
 
 /**
  * Every valid module / Core Tier / support perk card, with its weight. typeWeights are per TYPE
- * and shared by that type's cards. Hybrids are never offered: they are only made by fusing.
+ * and shared by that type's cards. Hybrids are never offered: they are only made by a Mutation.
+ * `gun` sets the barrel layout (Double Barrel halves) for the Mutation check.
  */
 export function candidateCards(
   data: GameData,
   build: RunBuild,
   support: SupportLevels = {},
+  gun: GunDef | null = null,
 ): [Card, number][] {
   const w = data.cards.typeWeights;
   const out: [Card, number][] = [];
   for (const family of ['element', 'grey', 'fitting'] as const) {
     const defs = data.barrelMods.filter((m) => m.family === family);
     for (const def of defs) {
-      const fuses = fusesWithOwned(data, build, def.id);
-      const weight = (w[family] / defs.length) * (fuses ? data.cards.fusesWithOwnedMult : 1);
-      out.push([{ type: 'module', modId: def.id, family, fuses }, weight]);
+      const upgrades = upgradesOwned(data, build, def.id);
+      const weight = (w[family] / defs.length) * (upgrades ? data.cards.upgradesOwnedMult : 1);
+      out.push([{ type: 'module', modId: def.id, family, upgrades }, weight]);
     }
   }
+  if (mutationPairs(data, build, layoutOf(gun, build.barrel.length)).length > 0)
+    out.push([{ type: 'mutation' }, w.mutation]);
   const pieces = data.muzzles.pieces;
   for (const m of pieces) {
     const owned = build.muzzle.some((s) => s?.id === m.id);
@@ -157,11 +177,11 @@ export function candidateCards(
   return out;
 }
 
-/** Tinker card: random +1 tiers among tiered modules in the barrel. Null when there are none. */
+/** Tinker card: random +1 tiers among modules that can still upgrade. Null when there are none. */
 export function rollTinker(data: GameData, build: RunBuild, rng: RNG): Card | null {
   const pool: { slot: number; modId: string }[] = [];
   build.barrel.forEach((s, slot) => {
-    if (s && modDef(data, s.id).family !== 'fitting') pool.push({ slot, modId: s.id });
+    if (s && s.tier < maxTier(data, s.id)) pool.push({ slot, modId: s.id });
   });
   if (pool.length === 0) return null;
   const upgrades: { slot: number; modId: string }[] = [];
@@ -191,8 +211,9 @@ export function drawCards(
   support: SupportLevels = {},
   count = data.cards.cardsPerLevelUp,
   path: string | null = null,
+  gun: GunDef | null = null,
 ): Card[] {
-  let pool: [Card, number][] = [...candidateCards(data, build, support)];
+  let pool: [Card, number][] = [...candidateCards(data, build, support, gun)];
   // Blessings (run stat cards) share the runStat weight.
   const perkWeight = data.cards.typeWeights.runStat / data.cards.runStats.length;
   for (const rs of data.cards.runStats) {
@@ -224,7 +245,8 @@ export function drawCards(
 /**
  * Apply a picked card. A module card needs `slot` (an open barrel slot; `open` = how many slots
  * are unlocked, so an insert never shifts into a locked one). A muzzle card needs `slot` too: the
- * muzzle slot. Returns what happened in the barrel step by step; empty for other cards.
+ * muzzle slot. A Mutation needs the barrel `slot` it was dropped on (`prefer`: which neighbour
+ * when both would work). Returns what happened in the barrel step by step; empty for other cards.
  */
 export function applyCard(
   data: GameData,
@@ -233,9 +255,13 @@ export function applyCard(
   card: Card,
   slot?: number,
   open?: number,
+  prefer: Side = 'right',
 ): FusionEvent[] {
   const { build } = target;
   switch (card.type) {
+    case 'mutation':
+      if (slot === undefined) throw new Error('A Mutation needs a slot');
+      return mutate(data, build, layoutOf(gun, build.barrel.length), slot, prefer);
     case 'module':
       if (slot === undefined) throw new Error('A module card needs a slot');
       return place(data, build, layoutOf(gun, build.barrel.length), slot, { id: card.modId, tier: 1 }, open);
@@ -254,34 +280,29 @@ export function applyCard(
       return [];
     case 'randomUpgrade':
       for (const up of card.upgrades) {
-        // Slots may have moved since the draw (swaps): fall back to any slot with that module.
+        // Slots may have moved since the draw (swaps), and a module may have reached its max:
+        // fall back to the same module elsewhere, then to any module that can still upgrade.
+        const ok = (s: ModSlot | null | undefined) => !!s && s.tier < maxTier(data, s.id);
         let i =
-          build.barrel[up.slot]?.id === up.modId
+          build.barrel[up.slot]?.id === up.modId && ok(build.barrel[up.slot])
             ? up.slot
-            : build.barrel.findIndex((s) => s?.id === up.modId);
-        if (i === -1)
-          i = build.barrel.findIndex((s) => s !== null && modDef(data, s.id).family !== 'fitting');
+            : build.barrel.findIndex((s) => s?.id === up.modId && ok(s));
+        if (i === -1) i = build.barrel.findIndex((s) => ok(s));
         if (i !== -1) build.barrel[i]!.tier++;
       }
       return [];
   }
 }
 
-/** Put a module in a slot directly, without fusing (Training Ground). `null` empties it. */
+/** Put a module in a slot directly, exactly as given (Training Ground). `null` empties it. */
 export function setSlot(build: RunBuild, index: number, slot: ModSlot | null): void {
   if (index < 0 || index >= build.barrel.length) throw new Error(`No barrel slot ${index}`);
   build.barrel[index] = slot ? { id: slot.id, tier: slot.tier } : null;
 }
 
-/** Drag a module to another slot (free, on the level-up screen): move or swap; matches brought together fuse. */
-export function swapSlots(
-  data: GameData,
-  gun: GunDef | null,
-  build: RunBuild,
-  a: number,
-  b: number,
-): FusionEvent[] {
-  return moveModule(data, build, layoutOf(gun, build.barrel.length), a, b);
+/** Drag a module to another slot (free, on the level-up screen): move or swap. Never merges. */
+export function swapSlots(build: RunBuild, a: number, b: number): FusionEvent[] {
+  return moveModule(build, a, b);
 }
 
 /** Is this card a valid offer for this build? For tests. */
@@ -290,10 +311,13 @@ export function isCardValid(
   build: RunBuild,
   card: Card,
   support: SupportLevels = {},
+  gun: GunDef | null = null,
 ): boolean {
   switch (card.type) {
     case 'runStat':
       return true;
+    case 'mutation':
+      return mutationPairs(data, build, layoutOf(gun, build.barrel.length)).length > 0;
     case 'module':
       return data.barrelMods.some((m) => m.id === card.modId && m.family !== 'hybrid');
     case 'muzzle':
@@ -303,7 +327,7 @@ export function isCardValid(
         card.upgrades.length > 0 &&
         card.upgrades.every((u) => {
           const s = build.barrel[u.slot];
-          return s?.id === u.modId && modDef(data, s.id).family !== 'fitting';
+          return s?.id === u.modId && s.tier < maxTier(data, s.id);
         })
       );
     default:

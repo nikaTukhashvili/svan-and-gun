@@ -79,7 +79,9 @@ test('switching the gun in the panel restarts the Training Ground with that gun'
   await expect(page.getByTestId('playground-panel')).toHaveCount(1);
 });
 
-test('B opens the workbench: drag modules onto the barrel, merge, remove, close', async ({ page }) => {
+test('B opens the workbench: drag modules onto the barrel, upgrade, move, remove, close', async ({
+  page,
+}) => {
   const errors = trackErrors(page);
   await openFromMenu(page);
   await page.keyboard.press('b');
@@ -105,10 +107,11 @@ test('B opens the workbench: drag modules onto the barrel, merge, remove, close'
   const muzzle = () => page.evaluate(() => window.__svan!.run!.build().muzzle);
 
   await drag(EMBER, slot(0));
-  await drag(EMBER, slot(3)); // not touching: two separate Ember Shots
-  expect((await barrel()).slice(0, 4)).toEqual(['ember_shot:1', null, null, 'ember_shot:1']);
-  await drag(EMBER, slot(1)); // next to the first one: they merge
-  expect((await barrel()).slice(0, 4)).toEqual([null, 'ember_shot:2', null, 'ember_shot:1']);
+  await drag(EMBER, slot(1)); // side by side: two separate Ember Shots
+  expect((await barrel()).slice(0, 2)).toEqual(['ember_shot:1', 'ember_shot:1']);
+  await drag(EMBER, slot(0)); // onto the first one: it upgrades
+  await drag(slot(1), slot(3)); // move the second one away
+  expect((await barrel()).slice(0, 4)).toEqual(['ember_shot:2', null, null, 'ember_shot:1']);
   await page.screenshot({ path: test.info().outputPath('workbench.png') });
   await drag(slot(3), [640, 300]); // dragged off the barrel: removed
   expect((await barrel())[3]).toBeNull();
