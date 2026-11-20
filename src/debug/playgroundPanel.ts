@@ -41,6 +41,9 @@ export interface PlaygroundController {
   respawnDummies(): void;
   /** The real level-up screen in Workbench mode: drag and drop every module. */
   openWorkbench(): void;
+  /** Sound test: play one sound effect. */
+  playSound(name: string): void;
+  readonly soundNames: readonly string[];
   clearEnemies(): void;
   spawnEnemies(id: string, count: number, elite: boolean): void;
   godMode(): boolean;
@@ -296,6 +299,21 @@ export class PlaygroundPanel {
         this.button('Spawn', () =>
           this.ctl.spawnEnemies(enemySel.value, Number(countSel.value), elite.checked),
         ),
+      ),
+    );
+
+    const soundSel = this.select(
+      this.ctl.soundNames.map((n): [string, string] => [n, n]),
+      this.ctl.soundNames[0] ?? '',
+      (v) => this.ctl.playSound(v),
+    );
+    sections.push(
+      el('h3', {}, 'Sound test'),
+      el(
+        'div',
+        { class: 'row' },
+        soundSel,
+        this.button('Play', () => this.ctl.playSound(soundSel.value)),
       ),
     );
 

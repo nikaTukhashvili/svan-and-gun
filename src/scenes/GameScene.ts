@@ -53,7 +53,7 @@ import { EQUIPMENT_SLOTS, type BuildSheetData, type SheetLine } from './BuildShe
 import type { ResultsData } from './ResultsScene';
 import { getGameData } from './gameData';
 import { getSave } from './meta';
-import { Sfx } from './audio/Sfx';
+import { SFX_NAMES, sfxFor, type Sfx, type SfxName } from './audio/Sfx';
 import { DamageNumbers } from './game/DamageNumbers';
 import { metaBonuses } from '../systems/market';
 import { modName, muzzleLabel, roman, slotLabel, STAT_LABELS } from '../ui/cardText';
@@ -267,7 +267,7 @@ export class GameScene extends Phaser.Scene {
 
     this.bus.on('run:ended', ({ result }) => this.endRun(result));
     // Feedback: sounds and damage numbers (T35).
-    this.sfx = new Sfx(this.game);
+    this.sfx = sfxFor(this.game);
     this.numbers = new DamageNumbers(this);
     this.ringsSeen = 0;
     const heavy = this.gun.shotsPerSecond < 3;
@@ -276,13 +276,24 @@ export class GameScene extends Phaser.Scene {
     this.bus.on('weapon:reloaded', () => this.sfx.play('reloaded'));
     this.bus.on('enemy:damaged', ({ x, y, amount, crit, byStatus }) => {
       this.numbers.spawn(x, y, amount, crit, byStatus);
-      if (!byStatus) this.sfx.play('hit');
+      if (!byStatus) this.sfx.play(crit ? 'crit' : 'hit');
     });
     this.bus.on('enemy:killed', () => this.sfx.play('kill'));
     this.bus.on('player:damaged', () => this.sfx.play('hurt'));
     this.bus.on('player:levelUp', () => this.sfx.play('levelUp'));
-    this.bus.on('pickup:collected', () => this.sfx.play('pickup'));
+    const pickupSound = {
+      scrap: 'pickup',
+      silver: 'silver',
+      kubdari: 'heal',
+      horn: 'horn',
+      chest: 'chest',
+    } as const;
+    this.bus.on('pickup:collected', ({ kind }) =>
+      this.sfx.play(pickupSound[kind as keyof typeof pickupSound] ?? 'pickup'),
+    );
+    this.bus.on('boss:spawned', () => this.sfx.play('bossSpawn'));
     this.bus.on('boss:dead', () => this.sfx.play('bossDeath'));
+    this.bus.on('run:ended', ({ result }) => this.sfx.play(result === 'victory' ? 'victory' : 'defeat'));
     this.bus.on('player:damaged', ({ amount }) => {
       if (getSave(this).state.settings.screenShake)
         this.cameras.main.shake(120, Math.min(0.012, 0.002 + amount * 0.0003));
@@ -371,6 +382,7 @@ export class GameScene extends Phaser.Scene {
     this.projectileRequests.length = 0;
     this.enemies.update(dt, px, py, this.projectileRequests, this.playerRadius);
     for (const r of this.projectileRequests) this.projectiles.spawn(r);
+    if (this.projectileRequests.length > 0) this.sfx.play('enemyShot');
 
     // Gun and bullets
     this.shots.length = 0;
@@ -419,10 +431,14 @@ export class GameScene extends Phaser.Scene {
 
     // Statuses, explosions, pickups
     this.status.update(dt);
-    for (const bl of this.status.blasts) this.effects.flash(bl.x, bl.y, bl.radius, bl.color, 0.25);
+    for (const bl of this.status.blasts) {
+      this.effects.flash(bl.x, bl.y, bl.radius, bl.color, 0.25);
+      this.sfx.play(bl.kind);
+    }
     this.status.blasts.length = 0;
     this.resolver.update(dt);
     this.updateGrenades(dt);
+    if (this.resolver.arcs.length > 0) this.sfx.play('zap');
     this.effects.lightning(this.resolver.arcs);
     this.pickups.update(
       dt,
@@ -543,6 +559,7 @@ export class GameScene extends Phaser.Scene {
       const dy = aim.y - py;
       const d = Math.hypot(dx, dy) || 1;
       const reach = Math.min(d, u(mag.grenade.throwRange));
+      this.sfx.play('throw');
       this.grenades.push({
         x: px + (dx / d) * reach,
         y: py + (dy / d) * reach,
@@ -743,8 +760,10 @@ export class GameScene extends Phaser.Scene {
       field.width,
       field.height,
     );
-    if (r.kind === 'elite') this.enemies.spawn(r.enemy, p.x, p.y, { minutes, elite: true, trait: r.trait });
-    else this.enemies.spawn(r.enemy, p.x, p.y, { minutes });
+    if (r.kind === 'elite') {
+      this.enemies.spawn(r.enemy, p.x, p.y, { minutes, elite: true, trait: r.trait });
+      this.sfx.play('elite');
+    } else this.enemies.spawn(r.enemy, p.x, p.y, { minutes });
   }
 
   /** A full circle of enemies around the player; points inside obstacles are skipped. */
@@ -1227,6 +1246,8 @@ export class GameScene extends Phaser.Scene {
       },
       respawnDummies: () => pg().helper.respawn(),
       openWorkbench: () => this.openWorkbench(),
+      soundNames: SFX_NAMES,
+      playSound: (name) => this.sfx.play(name as SfxName),
       clearEnemies: () => {
         for (const e of this.enemies.enemies) if (e.active && !e.immortal) this.enemies.release(e);
         this.projectiles.releaseAll();

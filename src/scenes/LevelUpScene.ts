@@ -22,6 +22,7 @@ import {
 } from '../ui/cardText';
 import { createButton } from '../ui/button';
 import { getGameData } from './gameData';
+import { sfxFor, type Sfx } from './audio/Sfx';
 
 /** What GameScene gives the level-up screen. The screen draws; the controller owns the rules. */
 export interface LevelUpController {
@@ -155,6 +156,7 @@ export class LevelUpScene extends Phaser.Scene {
   private tip: Phaser.GameObjects.Text | null = null;
   /** Last pointer x: a Mutation prefers the neighbour on the side of the slot the pointer is on. */
   private pointerX = 0;
+  private sfx!: Sfx;
 
   constructor() {
     super(SceneKeys.LevelUp);
@@ -172,6 +174,7 @@ export class LevelUpScene extends Phaser.Scene {
 
   create(): void {
     this.gd = getGameData(this);
+    this.sfx = sfxFor(this.game);
     // The run hides the OS cursor behind its crosshair; cards need a visible pointer.
     this.input.setDefaultCursor('default');
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.input.setDefaultCursor('none'));
@@ -300,6 +303,7 @@ export class LevelUpScene extends Phaser.Scene {
 
   private pickPath(id: string): void {
     if (this.animating || this.ctl.path() !== null) return;
+    this.sfx.play('select');
     this.ctl.choosePath(id);
     this.render();
   }
@@ -692,6 +696,7 @@ export class LevelUpScene extends Phaser.Scene {
       if (!look) return; // only module / muzzle cards and fitted pieces can be dragged
       d.moved = true;
       d.ghost = this.makeGhost(look.name, look.color);
+      this.sfx.play('grab');
     }
     d.ghost?.setPosition(p.x, p.y - 56); // above the pointer, so the slot under it stays readable
     const over = this.slotAt(p.x, p.y);
@@ -749,11 +754,13 @@ export class LevelUpScene extends Phaser.Scene {
       // Workbench: something dragged off the gun (up, away from it) is removed.
       if (p.y < BARREL_Y - SLOT_H) {
         if (d.kind === 'module' && this.ctl.remove) {
+          this.sfx.play('replace');
           this.ctl.remove(d.from);
           this.render();
           return;
         }
         if (d.kind === 'piece' && this.ctl.removeMuzzle) {
+          this.sfx.play('replace');
           this.ctl.removeMuzzle(d.from);
           this.render();
           return;
@@ -767,9 +774,11 @@ export class LevelUpScene extends Phaser.Scene {
       (d.card.type === 'module' || d.card.type === 'muzzle' || d.card.type === 'mutation')
     )
       this.dropCard(d.card, over);
-    else if (d.kind === 'module' && over.kind === 'barrel' && over.i !== d.from)
+    else if (d.kind === 'module' && over.kind === 'barrel' && over.i !== d.from) {
+      this.sfx.play('place');
       this.play(this.ctl.move(d.from, over.i), () => this.render());
-    else if (d.kind === 'piece' && over.kind === 'muzzle' && over.i !== d.from) {
+    } else if (d.kind === 'piece' && over.kind === 'muzzle' && over.i !== d.from) {
+      this.sfx.play('place');
       this.ctl.moveMuzzle(d.from, over.i);
       this.render();
     }
@@ -829,17 +838,20 @@ export class LevelUpScene extends Phaser.Scene {
   /** A module, muzzle or Mutation card dropped (or clicked into place) on a slot. A replace asks for a second go. */
   private dropCard(card: PlaceCard, ref: SlotRef): void {
     if ((card.type === 'muzzle') !== (ref.kind === 'muzzle')) {
+      this.sfx.play('error');
       this.showWrongRow(card.type);
       return;
     }
     if (card.type === 'mutation') {
       const side = this.sideOf(ref.i);
       if (this.ctl.previewMutate(ref.i, side).length === 0) {
+        this.sfx.play('error');
         this.showMutationPreview(ref.i); // explains why not; the card stays in hand
         return;
       }
       this.placing = null;
       this.confirmReplace = null;
+      this.sfx.play('mutate');
       this.play(this.ctl.pick(card, ref.i, side), () => this.afterPick());
       return;
     }
@@ -852,6 +864,7 @@ export class LevelUpScene extends Phaser.Scene {
       }
       this.placing = null;
       this.confirmReplace = null;
+      this.sfx.play(ev.kind === 'upgrade' ? 'upgrade' : ev.kind === 'replace' ? 'replace' : 'place');
       this.ctl.pick(card, ref.i);
       if (ev.kind === 'upgrade') this.playFlash(ref, () => this.afterPick());
       else this.afterPick();
@@ -865,7 +878,10 @@ export class LevelUpScene extends Phaser.Scene {
     }
     this.placing = null;
     this.confirmReplace = null;
-    this.play(this.ctl.pick(card, ref.i), () => this.afterPick());
+    const events = this.ctl.pick(card, ref.i);
+    const kind = events[0]?.kind;
+    this.sfx.play(kind === 'upgrade' ? 'upgrade' : kind === 'replace' ? 'replace' : 'place');
+    this.play(events, () => this.afterPick());
   }
 
   /** Continue in click mode: click (or press) the same slot again to confirm the replace. */
@@ -912,6 +928,7 @@ export class LevelUpScene extends Phaser.Scene {
       this.render();
       return;
     }
+    this.sfx.play('select');
     this.ctl.pick(card);
     this.afterPick();
   }
@@ -924,6 +941,7 @@ export class LevelUpScene extends Phaser.Scene {
 
   private doReroll(): void {
     if (this.ctl.rerollsLeft() <= 0) return;
+    this.sfx.play('reroll');
     this.ctl.reroll();
     this.render();
   }

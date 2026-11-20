@@ -239,3 +239,9 @@ _Add dated notes here as tasks complete (decisions, deviations, follow-ups)._
 - Moving a module only moves or swaps it. `cards.fusesWithOwnedMult` → `upgradesOwnedMult`; module cards say CAN UPGRADE. Tinker only raises modules below their max.
 - Tests: `fusion.test.ts` rewritten; Mutation in `build.test.ts`; e2e upgrade-by-drop and Mutation drag.
 - Same day, after playtest: the element cap went from V to III (`maxElementTier: 3`); at V no mutation happened in a run. Hybrids are made at III.
+
+**2026-11-21 · More sound effects (branch `barrel-fusion`)**
+
+- Still synthesized with WebAudio (no files). New: crit, lightning zap, freeze, burst (Steam/Brimstone), grenade throw, enemy shot, silver, heal (kubdari), hunting horn, chest, elite arrival, boss arrival, victory, defeat, menu click, and level-up screen sounds (path choice, grab, place, upgrade, Mutation, replace, refused drop, reroll).
+- One shared sound bank per game (`sfxFor`); combat sounds vary their pitch slightly. The Training Ground panel has a Sound test.
+- Music is not added yet (the user is choosing a source).

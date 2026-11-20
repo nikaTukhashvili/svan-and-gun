@@ -18,6 +18,8 @@ export interface Blast {
   y: number;
   radius: number;
   color: number;
+  /** For the sound: an area burst, or an enemy freezing. */
+  kind: 'burst' | 'freeze';
 }
 
 /** Chill numbers at the module's tier (Frost Shot and its hybrids). */
@@ -98,7 +100,7 @@ export class StatusEffectSystem {
     e.shatter = c.shatter;
     e.chillStacks = 0;
     e.chillTime = 0;
-    this.blasts.push({ x: e.x, y: e.y, radius: e.radius * 1.4, color: FREEZE_COLOR });
+    this.blasts.push({ x: e.x, y: e.y, radius: e.radius * 1.4, color: FREEZE_COLOR, kind: 'freeze' });
     return true;
   }
 
@@ -109,7 +111,7 @@ export class StatusEffectSystem {
 
   /** Area burst around a point (ignores defence): Brimstone on death, Steam on freeze. */
   burst(x: number, y: number, radius: number, damage: number, color: number, except?: Enemy): void {
-    this.blasts.push({ x, y, radius, color });
+    this.blasts.push({ x, y, radius, color, kind: 'burst' });
     for (const e of this.enemies.inRadius(x, y, radius, [])) {
       if (e !== except) this.enemies.damage(e, damage, true, true);
     }
