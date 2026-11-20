@@ -1,7 +1,8 @@
 /**
  * Training Ground panel (dev tool): a plain HTML panel docked to the left of the game
  * (the dummies stand to the right of the player).
- * Set the gun, every barrel slot (module + tier + order), Core Tier, perks and support perks;
+ * Set the gun, every barrel slot (module + tier + order), the muzzle (piece + level), Core Tier,
+ * perks and support perks;
  * reset things; spawn enemies;
  * read the DPS meter. It only talks to a PlaygroundController, never to Phaser.
  *
@@ -12,7 +13,8 @@ import type { GameData, Rarity } from '../data/types';
 import type { ModSlot, RunBuild, SupportLevels } from '../systems/build';
 import type { DpsStats } from '../systems/dpsMeter';
 import type { BarrelLayout, Pipeline } from '../systems/modPipeline';
-import { barrelSlotTag, modDescription } from '../ui/cardText';
+import type { MuzzleSlot } from '../systems/muzzle';
+import { barrelSlotTag, modDescription, muzzleDescription, muzzleEffects } from '../ui/cardText';
 
 export interface PlaygroundController {
   readonly data: GameData;
@@ -28,6 +30,8 @@ export interface PlaygroundController {
   /** `fuse`: place it like a card (fuses with neighbours); otherwise set it exactly. */
   setSlot(index: number, slot: ModSlot | null, fuse: boolean): void;
   swap(a: number, b: number, fuse: boolean): void;
+  /** Put a muzzle piece (or nothing) in a muzzle slot. */
+  setMuzzle(index: number, slot: MuzzleSlot | null): void;
   setCoreTier(tier: number): void;
   addPerk(cardId: string, rarity: Rarity): void;
   setSupport(id: string, level: number): void;
@@ -187,6 +191,35 @@ export class PlaygroundPanel {
         this.fuse = on;
       }),
       ...this.slotRows(build.barrel),
+    );
+
+    // Muzzle: piece + level per slot, then the stacked total
+    const levels = Array.from({ length: PANEL_MAX_TIER }, (_, i) => String(i + 1));
+    const pieces: [string, string][] = [
+      ['', '— empty —'],
+      ...d.muzzles.pieces.map((m): [string, string] => [m.id, m.name]),
+    ];
+    const muzzleRows = build.muzzle.map((slot, i) => {
+      const sel = this.select(pieces, slot?.id ?? '', (v) =>
+        this.ctl.setMuzzle(i, v ? { id: v, level: 1 } : null),
+      );
+      sel.classList.add('mod');
+      sel.dataset.testid = `playground-muzzle-${i}`;
+      if (slot) sel.title = muzzleDescription(d, slot.id, slot.level);
+      const lv = this.select(
+        levels.map((t) => [t, 'Lv ' + t]),
+        String(slot?.level ?? 1),
+        (v) => slot && this.ctl.setMuzzle(i, { id: slot.id, level: Number(v) }),
+      );
+      lv.disabled = !slot;
+      return el('div', { class: 'row' }, sel, lv);
+    });
+    const total = muzzleEffects(this.ctl.pipeline().muzzle);
+    sections.push(
+      el('h3', {}, 'Muzzle'),
+      ...muzzleRows,
+      el('div', { class: 'good' }, total.up.join(', ')),
+      el('div', { class: 'bad' }, total.down.join(', ')),
     );
 
     // Core Tier

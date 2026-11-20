@@ -209,3 +209,11 @@ _Add dated notes here as tasks complete (decisions, deviations, follow-ups)._
 - Tests: 198 unit tests (new `fusion.test.ts`; `operators.test.ts` removed). Every e2e spec passes when run one at a time, including a fusion placement test and a layout screenshot per gun.
 - Balance is untested: hybrid and fitting numbers are first guesses, to tune in the Training Ground.
 - Playtest change (same day): a hybrid grows **only from the same hybrid**. Feeding it a parent element (Plasma II + Thunder → Plasma III) felt wrong, so elements no longer fuse into a hybrid.
+
+**2026-11-21 · Muzzle slots (branch `barrel-fusion`, part of the upgrade system)**
+
+- Every gun ends in muzzle slots (Long Gun 3, Double Barrel 2, Scrap SMG 3). 7 muzzle pieces in `muzzles.json`, each with an upside and a downside; all fitted pieces stack on every shot, with floors so stacked downsides never break the gun.
+- A muzzle card dropped on the same piece upgrades it (no cap), on an empty slot fits it, on another piece replaces it (with a confirm). No fusing. Muzzle cards come from level-ups.
+- The Long Gun's "last barrel slot ×2" twist is removed (its muzzle replaces it). The Double Barrel starts every run with Grenade Mag level 1 (`guns.json > startingSupport`).
+- Level-up screen: the gun reads left to right as Core, barrel, muzzle. The Training Ground workbench has a muzzle row, and the panel a Muzzle section (piece + level per slot, stacked total).
+- Tests: `tests/unit/muzzle.test.ts`; e2e muzzle upgrade by drag, workbench muzzle fit/upgrade/remove. `window.__svan.levelUpSlots()` gives slot centres to e2e tests.

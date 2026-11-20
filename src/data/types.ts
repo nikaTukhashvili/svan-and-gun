@@ -14,6 +14,9 @@ import type {
   ModFamilySchema,
   SupportPerkSchema,
   MapSchema,
+  MuzzlePieceSchema,
+  MuzzlesSchema,
+  MuzzleStatsSchema,
   ObstacleSchema,
   PlaygroundDummySchema,
   PlaygroundSchema,
@@ -29,6 +32,9 @@ export type GameConfig = z.infer<typeof ConfigSchema>;
 export type GunDef = z.infer<typeof GunSchema>;
 export type BarrelModDef = z.infer<typeof BarrelModSchema>;
 export type SupportPerkDef = z.infer<typeof SupportPerkSchema>;
+export type MuzzlesDef = z.infer<typeof MuzzlesSchema>;
+export type MuzzlePieceDef = z.infer<typeof MuzzlePieceSchema>;
+export type MuzzleStats = z.infer<typeof MuzzleStatsSchema>;
 export type ModFamily = z.infer<typeof ModFamilySchema>;
 /** Barrel modules that have tiered numbers (everything but fittings). */
 export type TieredModDef = Exclude<BarrelModDef, { family: 'fitting' }>;
@@ -67,6 +73,7 @@ export interface GameData {
   readonly guns: readonly GunDef[];
   readonly barrelMods: readonly BarrelModDef[];
   readonly supportPerks: readonly SupportPerkDef[];
+  readonly muzzles: MuzzlesDef;
   readonly enemies: readonly EnemyDef[];
   readonly boss: BossDef;
   readonly timeline: TimelineDef;

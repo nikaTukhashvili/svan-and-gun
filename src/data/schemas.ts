@@ -121,16 +121,18 @@ export const GunSchema = z.strictObject({
   /** Every Nth bullet is a free crit; 0 = no crit trait. */
   critEveryN: nonNegInt,
   tierBonus: z.strictObject({ damage: nonNeg, fireRate: nonNeg }),
-  /** The gun's twist: barrel length, separate chains, muzzle boost, crit chamber. */
+  /** The gun's twist: barrel length, separate chains, crit chamber. */
   barrel: z.strictObject({
     slots: posInt,
     /** Separate chains the barrel is split into; trigger pulls alternate between them. */
     chains: posInt,
-    /** Strength multiplier for the last barrel slot (1 = none). */
-    muzzleBoost: z.number().min(1),
     /** If > 0, the last barrel slot is a crit chamber: it works only on crit bullets, this many times as strong. */
     critChamberMult: nonNeg,
   }),
+  /** Muzzle slots at the end of the barrel (GDD: Muzzle). */
+  muzzleSlots: posInt,
+  /** Support perks this gun starts every run with: id → level (Double Barrel: Grenade Mag 1). */
+  startingSupport: z.record(z.string(), posInt).optional(),
 });
 export const GunsSchema = z.array(GunSchema).min(1);
 
@@ -261,6 +263,40 @@ export const SupportPerkSchema = z.discriminatedUnion('id', [
   support('scavenger', { chance: unit01 }),
 ]);
 export const SupportPerksSchema = z.array(SupportPerkSchema).min(1);
+
+// ---------- muzzles.json ----------
+
+/**
+ * Muzzle stats (GDD: Muzzle). Every key is optional (0 when missing). Across pieces they add:
+ * bullets and spreadDeg are flat, the *Pct keys are fractions (-0.15 = -15%), critChance 0..1.
+ */
+export const MuzzleStatsSchema = z.strictObject({
+  bullets: z.number().optional(),
+  spreadDeg: z.number().optional(),
+  spreadPct: z.number().optional(),
+  rangePct: z.number().optional(),
+  damagePct: z.number().optional(),
+  fireRatePct: z.number().optional(),
+  bulletSpeedPct: z.number().optional(),
+  critChance: z.number().optional(),
+});
+
+/** A muzzle piece. value(level) = base + perLevel × (level − 1); bullets are rounded. No cap. */
+export const MuzzlePieceSchema = z.strictObject({
+  id: IdSchema,
+  name: z.string().min(1),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  base: MuzzleStatsSchema,
+  perLevel: MuzzleStatsSchema,
+});
+
+export const MuzzlesSchema = z.strictObject({
+  /** Extra bullets on a gun with (almost) no spread fan out over at least this many degrees. */
+  minFanDeg: nonNeg,
+  /** Stacked downsides never push these multipliers below this share of the base. */
+  floors: z.strictObject({ damage: unit01, fireRate: unit01, range: unit01, bulletSpeed: unit01 }),
+  pieces: z.array(MuzzlePieceSchema).min(1),
+});
 
 // ---------- enemies.json ----------
 
@@ -404,7 +440,15 @@ export const TimelineSchema = z.strictObject({
 
 // ---------- cards.json ----------
 
-export const CardTypeSchema = z.enum(['element', 'grey', 'fitting', 'coreTier', 'runStat', 'supportPerk']);
+export const CardTypeSchema = z.enum([
+  'element',
+  'grey',
+  'fitting',
+  'coreTier',
+  'runStat',
+  'supportPerk',
+  'muzzle',
+]);
 
 export const CardsSchema = z.strictObject({
   baseRerolls: nonNegInt,
@@ -422,6 +466,7 @@ export const CardsSchema = z.strictObject({
     coreTier: nonNeg,
     runStat: nonNeg,
     supportPerk: nonNeg,
+    muzzle: nonNeg,
   }),
   /** A module card that would fuse with a module already in the barrel weighs this many times more. */
   fusesWithOwnedMult: z.number().min(1),

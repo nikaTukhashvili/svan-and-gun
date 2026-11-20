@@ -219,6 +219,7 @@ export function moveModule(
 
 const copyBuild = (b: RunBuild): RunBuild => ({
   barrel: b.barrel.map((s) => (s ? { ...s } : null)),
+  muzzle: b.muzzle.map((s) => (s ? { ...s } : null)),
   coreTier: b.coreTier,
 });
 

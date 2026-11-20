@@ -175,11 +175,12 @@ interface Pipeline {
 }
 ```
 
-1. **Strength:** each fitting multiplies `k` of its tiered neighbours in the same chain (`1 + left` / `1 + right`). The last slot gets ×muzzleBoost (Long Gun) or ×critChamberMult and `critOnly` (Scrap SMG).
+1. **Strength:** each fitting multiplies `k` of its tiered neighbours in the same chain (`1 + left` / `1 + right`). The SMG's last slot gets ×critChamberMult and `critOnly`.
 2. **Base shot:** the Core makes its `ShotSpec[]` and `applyOnFire` sets each shot's chain (Double Barrel alternates by `volleyId`).
 3. **onFire:** Twin Shot, Long Rifling, Piercing Bore and Heavy Slug change the shots of their chain, scaled by `k`.
 4. **onHit:** `HitResolver.onHit` runs every on-hit module of the bullet's chain (elements, hybrids, Split Shot). `onStop` runs Ricochet when the bullet would stop. Slot order plays no part.
-5. **Hybrids:** Plasma and Blight Arc call `StatusEffectSystem.chainLightning` with an `onReach` callback that burns / poisons every enemy reached; Brimstone burns and poisons, and `StatusEffectSystem.deathBlast` (synced from the pipeline each frame) bursts a burning, poisoned enemy on death. Bursts are queued in `status.blasts` for the effects layer.
+5. **Muzzle:** `buildPipeline` adds up the muzzle (`totalMuzzle`) into `Pipeline.muzzle` and `weaponMods.muzzle` (see below); `computeWeaponStats` applies it to the Core's numbers.
+6. **Hybrids:** Plasma and Blight Arc call `StatusEffectSystem.chainLightning` with an `onReach` callback that burns / poisons every enemy reached; Brimstone burns and poisons, and `StatusEffectSystem.deathBlast` (synced from the pipeline each frame) bursts a burning, poisoned enemy on death. Bursts are queued in `status.blasts` for the effects layer.
 
 **Resolution rules**
 
@@ -191,6 +192,18 @@ interface Pipeline {
 - Defence is subtracted from bullet, shard, ricochet and lightning damage (minimum 1). Status ticks, explosions and Brimstone bursts ignore it.
 
 Scrap fills a level bar; each level opens LevelUpScene with 3 cards from CardDraw. CardDraw builds the list of valid cards first and only then picks, so it can never offer an invalid card.
+
+
+### Muzzle (2026-11-21)
+
+`src/systems/muzzle.ts` (pure): `RunBuild.muzzle: (MuzzleSlot | null)[]` with `MuzzleSlot { id; level }` (no cap). The slot count comes from `guns.json > muzzleSlots`.
+
+- `previewMuzzle` / `placeMuzzle(muzzle, i, id)`: empty slot → `fit` (level 1); the same piece → `upgrade` (+1 level); another piece → `replace`. `moveMuzzle` moves or swaps and never merges.
+- `muzzleStats(def, level)`: base + perLevel × (level − 1), bullets rounded. `totalMuzzle` adds every fitted piece.
+- `muzzleWeaponMods(data, totals)`: the totals as multipliers with the floors from `muzzles.json` (damage, fire rate, range, bullet speed), extra bullets, spread (flat degrees, then ×(1 + spreadPct)), crit chance, and `minFanDeg` when bullets were added.
+- `computeWeaponStats`: pellets = gun pellets + extra bullets (one volley, so the pellet rule holds); spread at least `minFanDeg` when there is more than one pellet; `WeaponStats.critChance` rolls on the seeded RNG per trigger pull, on top of `critEveryN`.
+- Muzzle cards: `Card { type: 'muzzle'; muzzleId; owned }`, weight `cards.typeWeights.muzzle` shared by all pieces; `applyCard` needs the muzzle slot.
+- `guns.json > startingSupport` seeds `RunState.support` at run start (Double Barrel: Grenade Mag 1).
 
 ### Levelling
 
@@ -235,8 +248,9 @@ Every tunable value is in a JSON file under `public/data`, checked by a zod sche
 | File | Holds | Key fields |
 | --- | --- | --- |
 | `config.json` | Global numbers | XP curve (xpBase, xpStep), crit multiplier, map size, invulnerability time, slot unlock levels, boss spawn time |
-| `guns.json` | 3 cores | damage, shotsPerSecond, magSize, reload, spreadDeg, range, bulletSpeed, pellets, trait, tierBonus |
+| `guns.json` | 3 cores | damage, shotsPerSecond, magSize, reload, spreadDeg, range, bulletSpeed, pellets, trait, tierBonus, barrel (slots, chains, critChamberMult), muzzleSlots, startingSupport |
 | `barrelMods.json` | 17 barrel modules: 3 elements, 3 hybrids, 6 grey, 5 fittings | id, family, colour, element / parents, base + perTier numbers (fittings: left, right) |
+| `muzzles.json` | 7 muzzle pieces, minFanDeg, floors | id, name, colour, base + perLevel stats (bullets, spreadDeg, spreadPct, rangePct, damagePct, fireRatePct, bulletSpeedPct, critChance) |
 | `supportPerks.json` | 6 support perks (were magazine mods) | id, description, values per level (1–3) |
 | `enemies.json` | 5 enemy types | hp, speed, contactDamage, defence, behaviour, behaviour params, scrapDrop, silverChance |
 | `boss.json` | Devi Chieftain | hp, phases (threshold, attacks, cooldowns), enrageAfter |

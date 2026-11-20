@@ -10,7 +10,8 @@
     "fitting": 1.5,
     "coreTier": 1.5,
     "runStat": 3,
-    "supportPerk": 2
+    "supportPerk": 2,
+    "muzzle": 2
   },
   "fusesWithOwnedMult": 3,
   "rarity": {

@@ -5,7 +5,7 @@ import { RNG } from '../core/rng';
 import { getById } from '../data/registry';
 import type { RunBuild } from '../systems/build';
 import { computeScore, computeSilver, type RunSummary } from '../systems/score';
-import { roman, slotLabel } from '../ui/cardText';
+import { muzzleLabel, roman, slotLabel } from '../ui/cardText';
 import { createButton } from '../ui/button';
 import { getGameData } from './gameData';
 
@@ -91,7 +91,8 @@ export class ResultsScene extends Phaser.Scene {
     t(right, 230, 'FINAL GUN', 16, UiColors.textDim, true);
     t(right, 256, `${gun.name} · Core Tier ${roman(build.coreTier)}`, 22, UiColors.text, true);
     const barrel = build.barrel.map((s, i) => `Barrel ${i + 1}: ${slotLabel(gd, s)}`);
-    t(right, 296, barrel.join('\n'), 18).setLineSpacing(8);
+    const muzzle = (build.muzzle ?? []).map((m, i) => `Muzzle ${i + 1}: ${muzzleLabel(gd, m)}`);
+    t(right, 296, [...barrel, ...muzzle].join('\n'), 15).setLineSpacing(4);
 
     createButton(
       this,

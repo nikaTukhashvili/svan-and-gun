@@ -22,9 +22,9 @@
     "barrel": {
       "slots": 8,
       "chains": 1,
-      "muzzleBoost": 2,
       "critChamberMult": 0
-    }
+    },
+    "muzzleSlots": 3
   },
   {
     "id": "double_barrel",
@@ -49,8 +49,11 @@
     "barrel": {
       "slots": 8,
       "chains": 2,
-      "muzzleBoost": 1,
       "critChamberMult": 0
+    },
+    "muzzleSlots": 2,
+    "startingSupport": {
+      "grenade_mag": 1
     }
   },
   {
@@ -76,8 +79,8 @@
     "barrel": {
       "slots": 7,
       "chains": 1,
-      "muzzleBoost": 1,
       "critChamberMult": 3
-    }
+    },
+    "muzzleSlots": 3
   }
 ]

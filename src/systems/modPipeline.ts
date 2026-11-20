@@ -14,8 +14,10 @@
  * Gun twists (guns.json > barrel):
  *  - chains: the barrel is split into separate chains; trigger pulls alternate between them
  *    (Double Barrel). Fusion and fittings never cross into the other chain.
- *  - muzzleBoost: the last barrel slot works that many times as strong (Long Gun).
  *  - critChamberMult: the last slot works only on crit bullets, that many times as strong (SMG).
+ *
+ * The muzzle (systems/muzzle.ts) is separate from the barrel: its stacked stats become weapon
+ * multipliers (WeaponMods.muzzle), applied in computeWeaponStats.
  *
  * The pellet rule still holds: on-hit modules trigger once per enemy per volley (firstOfVolley).
  */
@@ -25,6 +27,7 @@ import type { Bullet, BulletSystem } from './bullets';
 import type { RunBuild, SupportLevels } from './build';
 import type { Enemy, EnemySystem, HitHandler } from './enemies';
 import { modDef, neighbours, tierParams } from './fusion';
+import { muzzleWeaponMods, totalMuzzle, type MuzzleTotals, type MuzzleWeaponMods } from './muzzle';
 import type { LightningArc, StatusEffectSystem } from './status';
 import type { ShotSpec } from './weapon';
 
@@ -34,9 +37,29 @@ export interface WeaponMods {
   magMult: number;
   reloadMult: number;
   lastRoundMult: number;
+  /** The muzzle's stacked effect (floors applied). */
+  muzzle: MuzzleWeaponMods;
 }
 
-export const NO_WEAPON_MODS: WeaponMods = { fireRateMult: 1, magMult: 1, reloadMult: 1, lastRoundMult: 1 };
+export const NO_MUZZLE_MODS: MuzzleWeaponMods = {
+  extraBullets: 0,
+  spreadAddDeg: 0,
+  spreadMult: 1,
+  damageMult: 1,
+  fireRateMult: 1,
+  rangeMult: 1,
+  speedMult: 1,
+  critChance: 0,
+  minFanDeg: 0,
+};
+
+export const NO_WEAPON_MODS: WeaponMods = {
+  fireRateMult: 1,
+  magMult: 1,
+  reloadMult: 1,
+  lastRoundMult: 1,
+  muzzle: NO_MUZZLE_MODS,
+};
 
 /** Support perks with event hooks (were magazine mods). */
 export interface SupportEffects {
@@ -53,7 +76,7 @@ export type SlotMod<D extends TieredModDef = TieredModDef> = D extends TieredMod
       id: D['id'];
       tier: number;
       p: D['base'];
-      /** Strength multiplier from fittings, the muzzle or the crit chamber. */
+      /** Strength multiplier from fittings or the crit chamber. */
       k: number;
       /** Crit chamber: only crit bullets use this slot. */
       critOnly: boolean;
@@ -72,7 +95,6 @@ export interface BarrelLayout {
   slots: number;
   chains: number;
   slotsPerChain: number;
-  muzzleBoost: number;
   critChamberMult: number;
 }
 
@@ -84,6 +106,8 @@ export interface Pipeline {
   strength: number[];
   weaponMods: WeaponMods;
   support: SupportEffects;
+  /** The muzzle's stats added up (for the UI). */
+  muzzle: MuzzleTotals;
   /** Strongest Brimstone burst in the barrel (px radius), or null. */
   deathBlast: { damage: number; radius: number } | null;
 }
@@ -91,14 +115,13 @@ export interface Pipeline {
 const ON_FIRE = new Set(['twin_shot', 'long_rifling', 'piercing_bore', 'heavy_slug']);
 
 export function layoutOf(gun: GunDef | null, barrelSlots: number): BarrelLayout {
-  const b = gun?.barrel ?? { slots: barrelSlots, chains: 1, muzzleBoost: 1, critChamberMult: 0 };
+  const b = gun?.barrel ?? { slots: barrelSlots, chains: 1, critChamberMult: 0 };
   const slots = barrelSlots;
   const chains = Math.max(1, Math.min(b.chains, slots));
   return {
     slots,
     chains,
     slotsPerChain: Math.ceil(slots / chains),
-    muzzleBoost: b.muzzleBoost,
     critChamberMult: b.critChamberMult,
   };
 }
@@ -140,7 +163,6 @@ export function buildPipeline(
     const def = modDef(data, slot.id);
     if (def.family === 'fitting') return;
     const last = i === layout.slots - 1;
-    if (last && layout.muzzleBoost > 1) strength[i]! *= layout.muzzleBoost;
     const critOnly = last && layout.critChamberMult > 0;
     if (critOnly) strength[i]! *= layout.critChamberMult;
     barrel.push({
@@ -154,7 +176,8 @@ export function buildPipeline(
     } as SlotMod);
   });
 
-  const weaponMods: WeaponMods = { ...NO_WEAPON_MODS };
+  const muzzle = totalMuzzle(data, build.muzzle);
+  const weaponMods: WeaponMods = { ...NO_WEAPON_MODS, muzzle: muzzleWeaponMods(data, muzzle) };
   for (const m of barrel) if (m.id === 'heavy_slug') weaponMods.fireRateMult *= 1 - m.p.fireRatePenalty;
 
   let deathBlast: Pipeline['deathBlast'] = null;
@@ -190,7 +213,7 @@ export function buildPipeline(
         break;
     }
   }
-  return { layout, barrel, fittings, strength, weaponMods, support: effects, deathBlast };
+  return { layout, barrel, fittings, strength, weaponMods, support: effects, muzzle, deathBlast };
 }
 
 /** Which chain a trigger pull uses: chains alternate shot by shot (Double Barrel). */

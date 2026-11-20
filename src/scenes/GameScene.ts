@@ -15,6 +15,7 @@ import {
   buildForGun,
   drawCards,
   setSlot,
+  startingSupport,
   swapSlots,
   unlockedSlots,
   type Card,
@@ -23,6 +24,7 @@ import { BulletSystem, REDIRECTED, type Bullet } from '../systems/bullets';
 import { Destructibles, type Destructible } from '../systems/destructibles';
 import { applyOnFire, buildPipeline, HitResolver, layoutOf, type Pipeline } from '../systems/modPipeline';
 import { previewMove, previewPlace } from '../systems/fusion';
+import { moveMuzzle, previewMuzzle } from '../systems/muzzle';
 import { PickupSystem, rollCrateDrop, rollEnemyDrops, type Drop, type Pickup } from '../systems/pickups';
 import { Progression } from '../systems/progression';
 import { StatusEffectSystem } from '../systems/status';
@@ -54,7 +56,7 @@ import { getSave } from './meta';
 import { Sfx } from './audio/Sfx';
 import { DamageNumbers } from './game/DamageNumbers';
 import { metaBonuses } from '../systems/market';
-import { modName, slotLabel, STAT_LABELS } from '../ui/cardText';
+import { modName, muzzleLabel, slotLabel, STAT_LABELS } from '../ui/cardText';
 import { KeyboardMouseInput } from './input/KeyboardMouseInput';
 
 export interface GameSceneData {
@@ -155,7 +157,8 @@ export class GameScene extends Phaser.Scene {
     this.gd = getGameData(this);
     this.gun = getById(this.gd.guns, data.gunId, 'gun');
     this.run = createRunState(data.gunId, data.seed);
-    this.run.build = buildForGun(this.gun); // each gun has its own barrel length and twist
+    this.run.build = buildForGun(this.gun); // each gun has its own barrel length, twist and muzzle
+    this.run.support = startingSupport(this.gun); // Double Barrel: Grenade Mag from the start
     this.ended = false;
     this.chestsPending = 0;
     this.levelUpOpen = false;
@@ -601,6 +604,11 @@ export class GameScene extends Phaser.Scene {
       previewPlace: (slot, modId) =>
         previewPlace(d, this.run.build, this.layout(), slot, { id: modId, tier: 1 }, this.openSlots()).events,
       previewMove: (a, b) => previewMove(d, this.run.build, this.layout(), a, b).events,
+      previewMuzzle: (slot, id) => previewMuzzle(this.run.build.muzzle, slot, id),
+      moveMuzzle: (a, b) => {
+        moveMuzzle(this.run.build.muzzle, a, b);
+        this.refreshStats();
+      },
       cards: () => this.hand,
       rerollsLeft: () => Math.max(0, Math.round(this.stats.rerolls) - this.run.rerollsUsed),
       reroll: () => {
@@ -672,6 +680,8 @@ export class GameScene extends Phaser.Scene {
       slots:
         'Barrel  ' +
         this.run.build.barrel.map((sl) => (sl ? slotLabel(this.gd, sl) : '—')).join('  |  ') +
+        '      Muzzle  ' +
+        this.run.build.muzzle.map((m) => (m ? muzzleLabel(this.gd, m) : '—')).join('  |  ') +
         '      Core Tier ' +
         this.run.build.coreTier,
     };
@@ -889,6 +899,9 @@ export class GameScene extends Phaser.Scene {
       ...this.run.build.barrel.map((s, i) => ({
         text: `Barrel ${i + 1}: ${s ? slotLabel(d, s) : '—'}`,
       })),
+      ...this.run.build.muzzle.map((m, i) => ({
+        text: `Muzzle ${i + 1}: ${m ? muzzleLabel(d, m) : '—'}`,
+      })),
       ...d.supportPerks
         .filter((p) => (this.run.support[p.id] ?? 0) > 0)
         .map((p) => ({ text: `Support: ${p.name} ${this.run.support[p.id]}/${p.levels.length}` })),
@@ -1044,15 +1057,21 @@ export class GameScene extends Phaser.Scene {
       previewPlace: (slot, modId) =>
         previewPlace(d, this.run.build, this.layout(), slot, { id: modId, tier: 1 }, all()).events,
       previewMove: (a, b) => previewMove(d, this.run.build, this.layout(), a, b).events,
+      previewMuzzle: (slot, id) => previewMuzzle(this.run.build.muzzle, slot, id),
+      moveMuzzle: (a, b) => changed(moveMuzzle(this.run.build.muzzle, a, b)),
       hasMore: () => true,
       close: () => {
         this.levelUpOpen = false;
         if (panelWasOpen) this.pg?.panel?.toggle();
         this.scene.resume();
       },
-      palette: () => d.barrelMods.map((m) => m.id),
+      palette: () => [...d.barrelMods.map((m) => m.id), ...d.muzzles.pieces.map((m) => m.id)],
       remove: (slot) => {
         this.run.build.barrel[slot] = null;
+        changed(null);
+      },
+      removeMuzzle: (slot) => {
+        this.run.build.muzzle[slot] = null;
         changed(null);
       },
     };
@@ -1146,6 +1165,10 @@ export class GameScene extends Phaser.Scene {
             this.run.build.barrel[b] = t;
           }
         }),
+      setMuzzle: (i, slot) =>
+        change(() => {
+          this.run.build.muzzle[i] = slot ? { ...slot } : null;
+        }),
       setSupport: (id, level) =>
         change(() => {
           if (level > 0) this.run.support[id] = level;
@@ -1163,7 +1186,7 @@ export class GameScene extends Phaser.Scene {
       resetPerks: () =>
         change(() => {
           this.run.runBonuses = emptyBonuses();
-          this.run.support = {};
+          this.run.support = startingSupport(this.gun);
           this.run.picks = [];
         }),
       resetMeters: () => {

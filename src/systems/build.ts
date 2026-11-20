@@ -1,17 +1,20 @@
 /**
- * The gun build for one run: the barrel (fusing modules, GDD: Barrel fusion) and Core Tier, plus
+ * The gun build for one run: the barrel (fusing modules, GDD: Barrel fusion), the muzzle
+ * (GDD: Muzzle) and Core Tier, plus
  * the level-up card draw that changes it. Support perks and run stat perks live on the run.
  *
  * CardDraw builds the list of VALID cards first and only then picks (TDD: CardDraw algorithm):
  * - module cards are always valid (tiers have no cap; a full barrel can still fuse or replace);
  * - a module that would fuse with one already in the barrel weighs more (cards.fusesWithOwnedMult);
  * - Core Tier only below the max tier; a support perk only below its max level;
- * - Tinker only when the barrel has a module that can go up a tier.
+ * - Tinker only when the barrel has a module that can go up a tier;
+ * - muzzle cards are always valid (same piece = upgrade, else fit or replace).
  */
 import type { RNG } from '../core/rng';
 import type { GameData, GunDef, ModFamily, Rarity, StatId, StatMode } from '../data/types';
 import { fusesWithOwned, modDef, moveModule, place, type FusionEvent } from './fusion';
 import { layoutOf } from './modPipeline';
+import { placeMuzzle, type MuzzleSlot } from './muzzle';
 import { addBonus, type StatBonuses } from './stats';
 
 export interface ModSlot {
@@ -22,6 +25,8 @@ export interface ModSlot {
 
 export interface RunBuild {
   barrel: (ModSlot | null)[];
+  /** Muzzle slots at the end of the barrel; every fitted piece applies to every shot. */
+  muzzle: (MuzzleSlot | null)[];
   coreTier: number;
 }
 
@@ -34,6 +39,8 @@ export type Card =
   | { type: 'coreTier'; toTier: number }
   | { type: 'runStat'; cardId: string; rarity: Rarity; stat: StatId; mode: StatMode; value: number }
   | { type: 'supportPerk'; perkId: string; toLevel: number }
+  /** A muzzle piece; the player picks the muzzle slot. `owned`: the gun already has one (can upgrade). */
+  | { type: 'muzzle'; muzzleId: string; owned: boolean }
   /** Tinker: random +1 tiers for modules in the barrel, chosen when drawn (a surprise). */
   | { type: 'randomUpgrade'; upgrades: { slot: number; modId: string }[] };
 
@@ -44,12 +51,21 @@ export interface BuildTarget {
   support: SupportLevels;
 }
 
-export function createBuild(barrelSlots = 8): RunBuild {
-  return { barrel: Array.from({ length: barrelSlots }, () => null), coreTier: 1 };
+export function createBuild(barrelSlots = 8, muzzleSlots = 3): RunBuild {
+  return {
+    barrel: Array.from({ length: barrelSlots }, () => null),
+    muzzle: Array.from({ length: muzzleSlots }, () => null),
+    coreTier: 1,
+  };
 }
 
 export function buildForGun(gun: GunDef): RunBuild {
-  return createBuild(gun.barrel.slots);
+  return createBuild(gun.barrel.slots, gun.muzzleSlots);
+}
+
+/** Support perks the gun starts every run with (Double Barrel: Grenade Mag level 1). */
+export function startingSupport(gun: GunDef): SupportLevels {
+  return { ...(gun.startingSupport ?? {}) };
 }
 
 /**
@@ -74,6 +90,8 @@ export function cardKey(c: Card): string {
       return `stat:${c.cardId}`;
     case 'supportPerk':
       return `support:${c.perkId}`;
+    case 'muzzle':
+      return `muzzle:${c.muzzleId}`;
     case 'randomUpgrade':
       return 'tinker';
   }
@@ -97,6 +115,11 @@ export function candidateCards(
       const weight = (w[family] / defs.length) * (fuses ? data.cards.fusesWithOwnedMult : 1);
       out.push([{ type: 'module', modId: def.id, family, fuses }, weight]);
     }
+  }
+  const pieces = data.muzzles.pieces;
+  for (const m of pieces) {
+    const owned = build.muzzle.some((s) => s?.id === m.id);
+    out.push([{ type: 'muzzle', muzzleId: m.id, owned }, w.muzzle / pieces.length]);
   }
   if (build.coreTier < data.config.slots.maxCoreTier)
     out.push([{ type: 'coreTier', toTier: build.coreTier + 1 }, w.coreTier]);
@@ -171,8 +194,8 @@ export function drawCards(
 
 /**
  * Apply a picked card. A module card needs `slot` (an open barrel slot; `open` = how many slots
- * are unlocked, so an insert never shifts into a locked one). Returns what happened in the barrel
- * step by step; empty for other cards.
+ * are unlocked, so an insert never shifts into a locked one). A muzzle card needs `slot` too: the
+ * muzzle slot. Returns what happened in the barrel step by step; empty for other cards.
  */
 export function applyCard(
   data: GameData,
@@ -187,6 +210,10 @@ export function applyCard(
     case 'module':
       if (slot === undefined) throw new Error('A module card needs a slot');
       return place(data, build, layoutOf(gun, build.barrel.length), slot, { id: card.modId, tier: 1 }, open);
+    case 'muzzle':
+      if (slot === undefined) throw new Error('A muzzle card needs a muzzle slot');
+      placeMuzzle(build.muzzle, slot, card.muzzleId);
+      return [];
     case 'coreTier':
       build.coreTier = card.toTier;
       return [];
@@ -240,6 +267,8 @@ export function isCardValid(
       return true;
     case 'module':
       return data.barrelMods.some((m) => m.id === card.modId && m.family !== 'hybrid');
+    case 'muzzle':
+      return data.muzzles.pieces.some((m) => m.id === card.muzzleId);
     case 'randomUpgrade':
       return (
         card.upgrades.length > 0 &&

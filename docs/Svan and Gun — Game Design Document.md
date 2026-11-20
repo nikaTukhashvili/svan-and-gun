@@ -91,7 +91,7 @@ There are two level types, and they share the same gun, upgrades and enemies. Ph
 
 ## Player character
 
-The Svan has a small set of base stats. Market buffs raise them permanently, and level-up choices raise them for one run only. All numbers below are first values for tuning.
+The Svan has a small set of base stats. Market buffs raise them permanently, and items (see Gear) raise them for one run only. All numbers below are first values for tuning.
 
 | Stat | Base value | What it does | Raised by market? |
 | --- | --- | --- | --- |
@@ -127,7 +127,7 @@ The Svan has a small set of base stats. Market buffs raise them permanently, and
 
 ## Gun system
 
-The player picks one of three guns at the start of a run and keeps it to the end. Each gun has two parts. The **Core** sets base stats and how the gun feels. The **Barrel** holds coloured modules that change each bullet; modules placed next to a match **fuse** into a stronger one. Level-ups bring new modules, support perks and Core Tiers.
+The player picks one of three guns at the start of a run and keeps it to the end. Each gun has two parts. The **Core** sets base stats and how the gun feels. The **Barrel** holds coloured modules that change each bullet; modules placed next to a match **fuse** into a stronger one. The **Muzzle** at the end shapes the shot with trade-offs. Level-ups bring new modules, support perks and Core Tiers.
 
 ### Starting guns (Cores)
 
@@ -156,7 +156,7 @@ The barrel is a row of slots. Each slot holds one **module**. Where a module sit
 
 | Gun | Barrel | Twist |
 | --- | --- | --- |
-| Long Gun | 8 | **Muzzle:** the last slot works ×2 |
+| Long Gun | 8 | None in the barrel: its strength is 3 muzzle slots (see Muzzle). The old "last slot ×2" twist is gone |
 | Double Barrel | 8, as two halves of 4 | **Two barrels:** trigger pulls alternate between the halves; nothing fuses or boosts across the gap |
 | Scrap SMG | 6 + crit chamber | **Crit chamber:** the last slot works only on crit bullets (every 10th), ×3 |
 
@@ -214,9 +214,40 @@ The barrel is a row of slots. Each slot holds one **module**. Where a module sit
 
 - **No slot order.** Every module applies to every bullet of its barrel half. Loop guard: shards from Split Shot carry element and hybrid effects but never split or bounce again (the bullet caps still apply).
 
+### Muzzle (decided 2026-11-21)
+
+Every gun ends in a few **muzzle slots**. A muzzle piece shapes the shot (bullet count, spread, range, speed) and always has an **upside and a downside**. All muzzle pieces on a gun **stack** on every shot. Dragging a muzzle card onto a piece of the **same type** upgrades it one level instead of taking another slot (Flared Muzzle → Flared Muzzle II); there is no fusing between muzzles.
+
+| Gun | Muzzle slots |
+| --- | --- |
+| Long Gun | 3 |
+| Double Barrel | 2. Makes up for it with a built-in **Grenade Mag** (level 1 from the start, see Support perks) |
+| Scrap SMG | 3 |
+
+First muzzle pieces (numbers to tune):
+
+| Muzzle | Upside | Downside |
+| --- | --- | --- |
+| Flared Muzzle | +1 bullet | +8° spread, −15% range |
+| Scatter Mouth | +2 bullets | −30% damage per bullet, −25% range |
+| Choke | −50% spread, +20% range | −10% fire rate |
+| Compensator | +20% fire rate | +6° spread |
+| Heavy Crown | +25% damage | −20% bullet speed |
+| Rifled Crown | +30% bullet speed, +15% range | −10% damage |
+| Wild Muzzle | +15% crit chance | +15° spread |
+
+- **Stacking:** across pieces, bullet counts and spread degrees add and percentages add up (two −15% range = −30%). Every stat has a floor so stacking downsides never breaks the gun (range at least 30% of base, fire rate at least 50%, damage at least 25%).
+- Extra bullets fan out evenly across the spread; on the Long Gun (0° spread) an added bullet uses a small minimum fan, so Flared on the Long Gun gives a narrow volley.
+- Extra bullets from muzzles count as one volley with the shot, so the pellet rule applies (on-hit effects once per enemy per volley).
+- **Levels, no cap:** a muzzle card dropped on the same piece raises its level. Upside and downside both grow by formula, base + perLevel × (level − 1), with the downside growing slower than the upside, so upgrading is worth it but never free. Dropped on a different piece it replaces it (with a confirm); dropped on an empty slot it is fitted at level 1. The same type can still sit in two slots if the player chooses.
+- No fusing: muzzle pieces never merge with each other or with barrel modules.
+- **Source:** level-up cards (a new card type, Muzzle), since they are part of the gun. Placed by dragging onto a muzzle slot on the level-up screen, which shows the muzzle slots after the barrel. A full muzzle row replaces a piece (with a confirm).
+- All muzzle slots are open from the start.
+- Data: `muzzles.json` (pieces, upside and downside numbers, floors); slot counts in `guns.json`.
+
 ### Support perks (were the magazine)
 
-The magazine and its slots are gone. Its mods became **support perks**: they need no slot, and taking one again raises its level (max 3).
+The magazine and its slots are gone. Its mods became **support perks**: simple upgrades that need no slot, and taking one again raises its level (max 3). The Double Barrel starts with Grenade Mag at level 1.
 
 | Support perk | Level 1 | Each level |
 | --- | --- | --- |
@@ -232,6 +263,67 @@ The magazine and its slots are gone. Its mods became **support perks**: they nee
 - A fourth element (Frost, blue: slow and shatter), giving 3 more hybrids (for example Frost + Fire = Steam).
 - Unlockable cores beyond the starting three, such as a flintlock pistol pair or a crossbow.
 
+## Gear: items (decided 2026-11-21, replaces run stat perk cards)
+
+Plain stat cards ("+10% speed, +8% fire rate") tell the player nothing about what they are building. Run stats now come from **named items** that the Svan finds and wears: *I found Boots of Speed and a Lightning Chokha* reads as a build. Level-up cards stay for the **gun** (barrel modules, support perks, Core Tier); chests and elites give **gear**. The two never share a hand.
+
+Items last for one run, like everything except silver.
+
+**Slots (6):** Boots, Chokha, Svan Hat, Ring, Ring, Cloak.
+
+**Every item has a main theme, and the theme names it.** Rarity adds smaller extra stats. The themes each slot can roll lean the slot towards a role:
+
+| Slot | Leans towards | Example themes |
+| --- | --- | --- |
+| Boots | Movement | Boots of Speed, Boots of Pursuit (pickup radius) |
+| Chokha | Toughness, elements | Iron Chokha (armour), Lightning Chokha, Ember Chokha, Venom Chokha |
+| Svan Hat | Growth, utility | Hunter's Hat (scrap gain), Hat of Focus (reload speed) |
+| Ring (×2) | Offence | Ring of Fury (damage), Quick Ring (fire rate), Far Ring (bullet speed) |
+| Cloak | Survival | Cloak of the Hearth (HP regen), Wolf Cloak (max HP) |
+
+- **Element themes** (Ember, Venom, Lightning) strengthen that element's barrel modules and their hybrids (for example +20% lightning chain damage and Plasma arcs). Gear then nudges which modules the player goes for.
+- Extra stats are drawn from the general stat list (move speed, damage, fire rate, reload speed, bullet speed, pickup radius, max HP, HP regen, armour, scrap gain), never the same stat as the main theme.
+- All themes, stats and numbers live in data (`items.json`), so they can be tuned in the Training Ground.
+
+**Item level, no cap.** Like barrel modules, an item's numbers are base + perLevel × (level − 1). Rarity follows from the level, so an item found early can grow into a good one:
+
+| Level | Rarity | Stats |
+| --- | --- | --- |
+| 1–2 | Common | Main theme only |
+| 3–4 | Magic | + 1 extra stat (rolled when it reaches level 3) |
+| 5+ | Rare | + 2 extra stats (the second rolled at level 5) |
+
+There is no level cap: a run is about 6 minutes, so few items should go past level 8. A found Magic item starts at level 3 and a found Rare at level 5, so finding one and upgrading one are the same thing.
+
+**Legendaries** are named items with a fixed main stat and a **passive** that changes how the player plays. They are only found (never made by upgrading), start at level 1 with their passive, and levelling one also makes the passive stronger. First ideas:
+
+| Legendary | Slot | Passive |
+| --- | --- | --- |
+| Hat of the Tower Keeper | Svan Hat | After standing still for 1 s: +30% damage until you move |
+| Wolf-pelt Cloak | Cloak | A kill gives a short burst of move speed |
+| Ring of the Ember Smith | Ring | Ember Shot and Fire hybrids count as one tier higher |
+| Chokha of the Feast | Chokha | Scrap pickups heal 1 HP |
+| Boots of the Mountain Runner | Boots | Moving builds a charge; the next shot after a full charge pierces everything |
+
+**Where items come from**
+
+| Source | When | What it gives |
+| --- | --- | --- |
+| Elite | Every elite (2:00, 4:00) | A chest, at least Magic |
+| Supply chest on the map | Spawns about every 45 s at a random spot | A chest |
+| Boss | On death | A chest with a Legendary choice |
+
+Aim for 8–10 chests in a full run: enough to fill the 6 slots and still upgrade a few.
+
+**Opening a chest** pauses the game and offers **3 choices**:
+
+- While a slot is empty, at least one choice is a new item for an empty slot.
+- Each choice is either a **new item** (with a compare view against the one in that slot) or an **upgrade**: one of the player's items +1 level.
+- Once every slot is full, chests keep their purpose through upgrades, so a late chest always improves something the player already owns.
+- An item that is replaced is salvaged into scrap (open question: or silver).
+
+**Build sheet (C)** shows the 6 worn items with their level, rarity and stats, next to the barrel and support perks.
+
 ## In-run progression and roguelike elements
 
 Killed enemies drop **scrap** (XP). Each full scrap bar is a level-up: the game pauses at the workbench and the player picks 1 of 3 random cards. Everything gained in a run is lost when it ends, except silver.
@@ -242,15 +334,15 @@ Killed enemies drop **scrap** (XP). Each full scrap bar is a level-up: the game 
 | --- | --- | --- |
 | New module (element, grey or fitting) | Ember Shot | Always (no cap; a module that would fuse with one in the barrel is 3× as likely and marked CAN FUSE) |
 | Support perk | Quick Hands level 2 | Below its max level |
+| Muzzle piece | Flared Muzzle | Always (onto the same piece it upgrades it; a full muzzle row otherwise means replacing one) |
 | Core Tier | Long Gun Tier II | Below Tier V |
-| Perk (run stat) | +10% move speed, +1 armour, +10% scrap gain… for this run | Always |
-| Tinker | 2 random +1 tiers for modules in the barrel (the same one can get both) | The barrel has a module (not a fitting); appears as often as one perk |
+| Tinker | 2 random +1 tiers for modules in the barrel (the same one can get both) | The barrel has a module (not a fitting) |
 
 - Scrap needed to go from level L to L+1: `5 + 10 × (L − 1)`, so 5, 15, 25, 35… (tune in playtest). Totals: level 5 at 80 scrap, level 10 at 405, level 15 at 980, level 18 at 1,445. A run should yield roughly 1,200–1,500 scrap before the boss, which gives level 15–18 by the boss.
 - The curve is linear on purpose: the earlier +40% per level curve needed 3,800 scrap for level 18, so late level-ups would barely have happened.
 - Rerolls: 1 per run by default; the market can add more.
-- Card weights are per type and shared by that type's cards (`cards.json` > typeWeights), so perks stay a real option however many modules there are. Perks: move speed, damage, fire rate, reload speed, bullet speed, pickup radius, max HP, HP regen, armour, scrap gain.
-- Card rarity: common, rare, epic. In Phase 1 rarity applies to run stat cards only (for example +10% / +15% / +25%). Module, support and Core Tier cards have no rarity; module strength comes from fusing. Rare and epic odds rise slightly with each level.
+- Card weights are per type and shared by that type's cards (`cards.json` > typeWeights), so support perks stay a real option however many modules there are. Run stats (move speed, damage, fire rate…) are no longer cards: they come from items (see Gear).
+- Level-up cards have no rarity: module strength comes from fusing, support perks from their level. Rarity belongs to items.
 - Multiple level-ups from one pickup are shown one after another.
 
 **Drops on the map**
@@ -261,7 +353,7 @@ Killed enemies drop **scrap** (XP). Each full scrap bar is a level-up: the game 
 | Silver | About 5% of kills (1 silver), every elite (10 silver), the boss (50 silver) | Meta currency, kept after the run |
 | Kubdari (Svan meat pie) | Rare drop, breakable crates | Heals 30 HP |
 | Hunting Horn | Rare drop | Pulls in all scrap on the map |
-| Gunsmith's Chest | Every elite enemy | A free level-up card choice |
+| Chest | Every elite, supply chests on the map (about every 45 s), the boss | 3 gear choices: a new item or an item upgrade (see Gear) |
 | Barrel of Powder | Placed on the map | Explodes when shot, damaging nearby enemies |
 
 ## Enemies and bosses
@@ -276,7 +368,7 @@ Phase 1 needs 5 regular enemy types, an elite version of each and one area boss.
 | Rokapi | Hag-like evil creature | Caster: keeps its distance and throws a slowing curse | 25 | 0 | 2.5 | 6 (projectile) | 3:30 |
 | Devi Brute | Devi, giant multi-headed ogres | Tank: slow, tough, has armour | 120 | 3 | 2 | 20 | 3:30 |
 
-**Elites:** larger, with a coloured outline, 5× HP, +1 defence and one extra trait (faster, or a death burst). Each elite drops a Gunsmith's Chest. Scheduled at 2:00 and 4:00.
+**Elites:** larger, with a coloured outline, 5× HP, +1 defence and one extra trait (faster, or a death burst). Each elite drops a gear chest (at least Magic). Scheduled at 2:00 and 4:00.
 
 **Enemy scaling:** HP +12% per minute survived, applied when the enemy spawns. Damage and speed do not scale. The boss does not scale. Spawn numbers follow the difficulty timeline.
 

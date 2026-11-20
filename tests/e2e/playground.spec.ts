@@ -97,8 +97,12 @@ test('B opens the workbench: drag modules onto the barrel, merge, remove, close'
   };
   const barrel = () =>
     page.evaluate(() => window.__svan!.run!.build().barrel.map((s) => (s ? `${s.id}:${s.tier}` : null)));
-  const EMBER: [number, number] = [480, 143]; // first chip of the element row
-  const slot = (i: number): [number, number] => [118 + i * 132, 585];
+  const EMBER: [number, number] = [480, 133]; // first chip of the element row
+  const CHOKE: [number, number] = [640 - (7 * 150 + 6 * 10) / 2 + 75 + 2 * 160, 133 + 4 * 58]; // muzzle row, 3rd
+  const slots = (await page.evaluate(() => window.__svan!.levelUpSlots()))!;
+  const slot = (i: number): [number, number] => [slots.barrel[i]!, slots.y];
+  const muzzleSlot = (i: number): [number, number] => [slots.muzzle[i]!, slots.y];
+  const muzzle = () => page.evaluate(() => window.__svan!.run!.build().muzzle);
 
   await drag(EMBER, slot(0));
   await drag(EMBER, slot(3)); // not touching: two separate Ember Shots
@@ -108,6 +112,15 @@ test('B opens the workbench: drag modules onto the barrel, merge, remove, close'
   await page.screenshot({ path: test.info().outputPath('workbench.png') });
   await drag(slot(3), [640, 300]); // dragged off the barrel: removed
   expect((await barrel())[3]).toBeNull();
+
+  // Muzzle: fit, then the same piece again upgrades it; dragged off, it is removed.
+  await drag(CHOKE, muzzleSlot(0));
+  await drag(CHOKE, muzzleSlot(0));
+  expect((await muzzle())[0]).toEqual({ id: 'choke', level: 2 });
+  await drag(CHOKE, slot(5)); // a muzzle piece never goes in the barrel
+  expect((await barrel())[5]).toBeNull();
+  await drag(muzzleSlot(0), [640, 300]);
+  expect((await muzzle())[0]).toBeNull();
 
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => !window.__svan!.activeScenes().includes('levelUp'));

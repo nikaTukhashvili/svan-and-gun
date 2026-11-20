@@ -6,6 +6,16 @@ import type { GameData, GunDef } from '../data/types';
 import type { Card, ModSlot } from '../systems/build';
 import { fuseResult, modDef, tierParams, type FusionEvent } from '../systems/fusion';
 import type { BarrelLayout } from '../systems/modPipeline';
+import {
+  isUpside,
+  MUZZLE_STATS,
+  muzzleDef,
+  muzzleStats,
+  type MuzzleEvent,
+  type MuzzleSlot,
+  type MuzzleStatKey,
+  type MuzzleTotals,
+} from '../systems/muzzle';
 
 export interface CardText {
   label: string;
@@ -78,8 +88,66 @@ function fusesWithText(data: GameData, modId: string): string {
   return `Fuses with ${def.name}; next to another element it becomes ${hybrids.join(' or ')}.`;
 }
 
+const MUZZLE_LABEL: Record<MuzzleStatKey, (v: number) => string> = {
+  bullets: (v) => `${sign(v)}${Math.abs(v)} bullet${Math.abs(v) === 1 ? '' : 's'}`,
+  spreadDeg: (v) => `${sign(v)}${round1(Math.abs(v))}° spread`,
+  spreadPct: (v) => `${sign(v)}${pct(Math.abs(v))} spread`,
+  rangePct: (v) => `${sign(v)}${pct(Math.abs(v))} range`,
+  damagePct: (v) => `${sign(v)}${pct(Math.abs(v))} damage`,
+  fireRatePct: (v) => `${sign(v)}${pct(Math.abs(v))} fire rate`,
+  bulletSpeedPct: (v) => `${sign(v)}${pct(Math.abs(v))} bullet speed`,
+  critChance: (v) => `${sign(v)}${pct(Math.abs(v))} crit chance`,
+};
+const sign = (v: number) => (v < 0 ? '−' : '+');
+const round1 = (v: number) => Math.round(v * 10) / 10;
+
+export const muzzleName = (data: GameData, id: string): string => muzzleDef(data, id).name;
+export const muzzleColor = (data: GameData, id: string): number => hexColor(muzzleDef(data, id).color);
+export const muzzleLabel = (data: GameData, s: MuzzleSlot | null): string =>
+  s ? `${muzzleName(data, s.id)} ${roman(s.level)}` : 'empty';
+
+/** Upsides and downsides of a set of muzzle numbers, e.g. ["+1 bullet"], ["+8° spread", "−15% range"]. */
+export function muzzleEffects(t: MuzzleTotals): { up: string[]; down: string[] } {
+  const up: string[] = [];
+  const down: string[] = [];
+  for (const k of MUZZLE_STATS) {
+    const v = t[k];
+    if (Math.abs(v) < 1e-9) continue;
+    (isUpside(k, v) ? up : down).push(MUZZLE_LABEL[k](v));
+  }
+  return { up, down };
+}
+
+/** One muzzle piece at a level: "▲ +1 bullet   ▼ +8° spread, −15% range". */
+export function muzzleDescription(data: GameData, id: string, level = 1): string {
+  const { up, down } = muzzleEffects(muzzleStats(muzzleDef(data, id), level));
+  return [up.length ? `▲ ${up.join(', ')}` : '', down.length ? `▼ ${down.join(', ')}` : '']
+    .filter(Boolean)
+    .join('   ');
+}
+
+/** One line for what dropping a muzzle card will do. */
+export function describeMuzzleEvent(data: GameData, ev: MuzzleEvent): string {
+  if (ev.kind === 'fit') return `Fit ${muzzleLabel(data, ev.piece)}`;
+  if (ev.kind === 'upgrade')
+    return `Upgrade → ${muzzleLabel(data, ev.piece).toUpperCase()}: ${muzzleDescription(data, ev.piece.id, ev.piece.level)}`;
+  return `Replace ${muzzleLabel(data, ev.old)} with ${muzzleLabel(data, ev.by)}`;
+}
+
 export function describeCard(data: GameData, card: Card): CardText {
   switch (card.type) {
+    case 'muzzle': {
+      const def = muzzleDef(data, card.muzzleId);
+      const { up, down } = muzzleEffects(muzzleStats(def, 1));
+      return {
+        label: `MUZZLE${card.owned ? ' · CAN UPGRADE' : ''}`,
+        name: def.name,
+        body:
+          `▲ ${up.join('\n▲ ')}\n▼ ${down.join('\n▼ ')}\n\n` +
+          'Stacks with your other muzzle pieces. Drop it on the same piece to upgrade it.',
+        color: hexColor(def.color),
+      };
+    }
     case 'module': {
       const def = modDef(data, card.modId);
       return {
@@ -161,12 +229,11 @@ export const STAT_LABELS: Record<string, string> = {
   scrapGain: 'scrap gain',
 };
 
-/** Tag over a barrel slot: LEFT/RIGHT BARREL, MUZZLE ×n, CRIT CHAMBER ×n, or null. */
+/** Tag over a barrel slot: LEFT/RIGHT BARREL, CRIT CHAMBER ×n, or null. */
 export function barrelSlotTag(layout: BarrelLayout, i: number): string | null {
   const last = i === layout.slots - 1;
   let tag: string | null = null;
   if (layout.chains > 1 && i % layout.slotsPerChain === 0) tag = i === 0 ? 'LEFT BARREL' : 'RIGHT BARREL';
-  if (last && layout.muzzleBoost > 1) tag = `MUZZLE ×${layout.muzzleBoost}`;
   if (last && layout.critChamberMult > 0) tag = `CRIT CHAMBER ×${layout.critChamberMult}`;
   return tag;
 }
@@ -176,6 +243,5 @@ export function gunTwistText(gun: GunDef): string {
   const b = gun.barrel;
   if (b.chains > 1) return `Two barrels: shots alternate between ${b.chains} halves of ${b.slots / b.chains}`;
   if (b.critChamberMult > 0) return `Crit chamber: last slot works only on crits, ×${b.critChamberMult}`;
-  if (b.muzzleBoost > 1) return `Muzzle: the last barrel slot works ×${b.muzzleBoost}`;
-  return '';
+  return `${gun.muzzleSlots} muzzle slots: stack trade-offs on every shot`;
 }

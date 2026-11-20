@@ -21,6 +21,7 @@ import {
   GunsSchema,
   SupportPerksSchema,
   MapSchema,
+  MuzzlesSchema,
   PlaygroundSchema,
   TimelineSchema,
 } from './schemas';
@@ -40,6 +41,7 @@ const fileSchemas = {
   guns: GunsSchema,
   barrelMods: BarrelModsSchema,
   supportPerks: SupportPerksSchema,
+  muzzles: MuzzlesSchema,
   enemies: EnemiesSchema,
   boss: BossSchema,
   timeline: TimelineSchema,
@@ -111,6 +113,8 @@ function crossCheck(d: Parsed & { maps: Record<string, MapDef> }): string[] {
     ['guns', d.guns.map((g) => g.id)],
     ['barrelMods', d.barrelMods.map((m) => m.id)],
     ['supportPerks', d.supportPerks.map((m) => m.id)],
+    // Barrel modules and muzzle pieces share the workbench palette: ids must not clash.
+    ['barrelMods + muzzles', [...d.barrelMods.map((m) => m.id), ...d.muzzles.pieces.map((m) => m.id)]],
     ['enemies', d.enemies.map((e) => e.id)],
     ['buffs', d.buffs.map((b) => b.id)],
     ['cards.runStats', d.cards.runStats.map((c) => c.id)],
@@ -131,6 +135,19 @@ function crossCheck(d: Parsed & { maps: Record<string, MapDef> }): string[] {
       p.push(where + ': more slots than config.slots.maxTotalSlots');
     if (g.barrel.critChamberMult > 0 && g.critEveryN === 0)
       p.push(where + ': a crit chamber needs a gun with crits (critEveryN > 0)');
+    for (const [perk, level] of Object.entries(g.startingSupport ?? {})) {
+      const def = d.supportPerks.find((s) => s.id === perk);
+      if (!def) p.push(`guns.json > ${g.id} > startingSupport: unknown support perk "${perk}"`);
+      else if (level > def.levels.length)
+        p.push(`guns.json > ${g.id} > startingSupport: ${perk} has only ${def.levels.length} levels`);
+    }
+  }
+
+  // Muzzle pieces: perLevel only grows numbers the piece has.
+  for (const m of d.muzzles.pieces) {
+    if (Object.keys(m.base).length === 0) p.push(`muzzles.json > ${m.id}: base has no stats`);
+    for (const key of Object.keys(m.perLevel))
+      if (!(key in m.base)) p.push(`muzzles.json > ${m.id}: perLevel.${key} is not in base`);
   }
 
   // Barrel modules: placeholders exist; hybrids are made of two different elements, and every

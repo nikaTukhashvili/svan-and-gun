@@ -182,13 +182,13 @@ describe('tiers, fittings and twists', () => {
     expect(p.strength[4]).toBe(1);
   });
 
-  it('the Long Gun muzzle doubles the last slot, stacking with a fitting', () => {
+  it('the Long Gun has no barrel twist any more: its last slot is a normal slot', () => {
     const gun = getById(data.guns, 'long_gun', 'gun');
     const b = createBuild(gun.barrel.slots);
     const last = gun.barrel.slots - 1;
     b.barrel[last - 1] = { id: 'booster_right', tier: 1 };
     b.barrel[last] = { id: 'heavy_slug', tier: 1 };
-    expect(buildPipeline(data, b, gun).strength[last]).toBeCloseTo(2 * 1.4);
+    expect(buildPipeline(data, b, gun).strength[last]).toBeCloseTo(1.4);
   });
 });
 

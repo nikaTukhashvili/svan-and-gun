@@ -35,9 +35,12 @@ async function dragGame(page: Page, from: [number, number], to: [number, number]
   await page.mouse.up();
 }
 
-/** Centre of barrel slot `i` on the level-up screen (8 slots, one chain: Long Gun). */
-const SLOT_Y = 585;
-const slotX = (i: number) => 56 + 62 + i * (124 + 8);
+/** Centre of barrel (or muzzle) slot `i` on the open level-up screen, in game coordinates. */
+async function slotAt(page: Page, i: number, row: 'barrel' | 'muzzle' = 'barrel'): Promise<[number, number]> {
+  const s = await page.evaluate(() => window.__svan!.levelUpSlots());
+  if (!s) throw new Error('level-up screen is not open');
+  return [s[row][i]!, s.y];
+}
 
 test('scrap levels the player up; the game pauses for a card; picking one resumes', async ({ page }) => {
   const errors = trackErrors(page);
@@ -95,7 +98,8 @@ test('placing a module next to the same one fuses them, with a preview first', a
   await levelUpOpen(page);
   await page.keyboard.press('1'); // the Ember Shot card: now choose a slot
   // Hover slot 2 (between Fire 2 and Thunder 1): the preview shows the cascade.
-  const hover = await gamePoint(page, slotX(1), SLOT_Y);
+  const [hx, hy] = await slotAt(page, 1);
+  const hover = await gamePoint(page, hx, hy);
   await page.mouse.move(hover.x, hover.y);
   await page.waitForTimeout(150);
   await page.screenshot({ path: test.info().outputPath('fusion-preview.png') });
@@ -123,7 +127,8 @@ test('dragging a module card onto a filled slot inserts it; the others slide ove
   await levelUpOpen(page);
   // The single card sits in the middle; drop it on slot 2 (Twin Shot).
   const card = await gamePoint(page, 640, 270);
-  const slot = await gamePoint(page, slotX(1), SLOT_Y);
+  const [sx, sy] = await slotAt(page, 1);
+  const slot = await gamePoint(page, sx, sy);
   await page.mouse.move(card.x, card.y);
   await page.mouse.down();
   await page.mouse.move(slot.x, slot.y, { steps: 12 });
@@ -151,7 +156,7 @@ test('dragging a card next to the same module merges them, with an animation', a
     run.grantScrap(5);
   });
   await levelUpOpen(page);
-  await dragGame(page, [640, 270], [slotX(1), SLOT_Y]);
+  await dragGame(page, [640, 270], await slotAt(page, 1));
   await page.waitForTimeout(120);
   await page.screenshot({ path: test.info().outputPath('merge-animation.png') });
   await levelUpClosed(page);
@@ -170,9 +175,37 @@ test('dragging a module onto another slot swaps them', async ({ page }) => {
     run.grantScrap(5);
   });
   await levelUpOpen(page);
-  await dragGame(page, [slotX(0), SLOT_Y], [slotX(1), SLOT_Y]);
+  await dragGame(page, await slotAt(page, 0), await slotAt(page, 1));
   const build: RunBuild = await page.evaluate(() => window.__svan!.run!.build());
   expect(build.barrel.slice(0, 2).map((s) => s?.id)).toEqual(['ricochet', 'split_shot']);
+});
+
+test('a muzzle card dragged onto the same piece upgrades it', async ({ page }) => {
+  const errors = trackErrors(page);
+  await startRun(page, 'scrap_smg');
+  await page.evaluate(() => {
+    const run = window.__svan!.run!;
+    const b = run.build();
+    b.muzzle[1] = { id: 'compensator', level: 1 };
+    run.setBuild(b);
+    run.queueHand([{ type: 'muzzle', muzzleId: 'compensator', owned: true }]);
+    run.grantScrap(5);
+  });
+  await levelUpOpen(page);
+  await dragGame(page, [640, 270], await slotAt(page, 0)); // onto the barrel: refused, nothing taken
+  expect(await picked(page)).toBe(0);
+  const card = await gamePoint(page, 640, 270);
+  const [mx, my] = await slotAt(page, 1, 'muzzle');
+  const target = await gamePoint(page, mx, my);
+  await page.mouse.move(card.x, card.y);
+  await page.mouse.down();
+  await page.mouse.move(target.x, target.y, { steps: 12 });
+  await page.screenshot({ path: test.info().outputPath('muzzle-upgrade-preview.png') });
+  await page.mouse.up();
+  await levelUpClosed(page);
+  const build: RunBuild = await page.evaluate(() => window.__svan!.run!.build());
+  expect(build.muzzle).toEqual([null, { id: 'compensator', level: 2 }, null]);
+  expect(errors).toEqual([]);
 });
 
 test('kills drop scrap that flies to the player; an elite drops a Gunsmith chest', async ({ page }) => {
@@ -241,6 +274,12 @@ for (const gunId of ['long_gun', 'double_barrel', 'scrap_smg'] as const) {
         { id: 'heavy_slug', tier: 1 },
       ];
       b.barrel = b.barrel.map((_, i) => mods[i] ?? null);
+      const pieces = [
+        { id: 'flared_muzzle', level: 2 },
+        { id: 'choke', level: 1 },
+        { id: 'wild_muzzle', level: 3 },
+      ];
+      b.muzzle = b.muzzle.map((_, i) => pieces[i] ?? null);
       run.setBuild(b);
       run.grantScrap(5 + 15 + 25 + 35 + 45 + 55 + 65 + 75 + 85 + 95 + 105 + 115); // all slots open
     });
