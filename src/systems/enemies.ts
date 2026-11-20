@@ -301,7 +301,8 @@ export class EnemySystem {
     if (!byStatus) e.hitFlash = HIT_FLASH_SEC;
     this.opts.bus.emit('enemy:damaged', { uid: e.uid, x: e.x, y: e.y, amount, crit, byStatus });
     if (e.hp <= 0) {
-      if (e.immortal) e.hp = e.maxHp; // the whole hit still counts, so DPS is not capped by HP
+      if (e.immortal)
+        e.hp = e.maxHp; // the whole hit still counts, so DPS is not capped by HP
       else this.kill(e, byStatus);
     }
     return amount;

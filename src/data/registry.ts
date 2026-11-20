@@ -212,7 +212,8 @@ function crossCheck(d: Parsed & { maps: Record<string, MapDef> }): string[] {
 
   // Training Ground: the map exists, layout entries name a known dummy and stand inside the map.
   const pg = d.playground;
-  for (const id of duplicates(pg.dummies.map((x) => x.id))) p.push(`playground.json: duplicate dummy "${id}"`);
+  for (const id of duplicates(pg.dummies.map((x) => x.id)))
+    p.push(`playground.json: duplicate dummy "${id}"`);
   const pgMap = d.maps[pg.map];
   if (!pgMap) p.push(`playground.json > map: unknown map "${pg.map}"`);
   const dummyIds = new Set(pg.dummies.map((x) => x.id));
