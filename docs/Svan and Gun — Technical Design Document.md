@@ -402,7 +402,7 @@ Rules are unit tested without Phaser; the running game is checked with Playwrigh
 
 **End-to-end tests (Playwright)**
 
-- `window.__svan` test hook (dev/test builds only): read RunState, set seed, skip time, grant scrap, kill boss
+- `window.__svan` test hook (dev/test builds only): read RunState, set seed, skip time, grant scrap, kill boss; `startPlayground(gun)` and `run.playground` (DPS meter, dummies) for the Training Ground
 - Boot → menu → pick each gun → run starts
 - Level-up appears and a card applies
 - Skip to 5:30 → boss spawns → kill → results → silver saved → reload page → silver still there
@@ -415,7 +415,7 @@ Rules are unit tested without Phaser; the running game is checked with Playwrigh
 | --- | --- |
 | Scripts | `dev`, `build`, `preview`, `test`, `test:e2e`, `test:perf`, `lint`, `typecheck` |
 | CI | GitHub Actions on each push: lint, type check, Vitest, Playwright (headless Chromium) |
-| Debug | F3 overlay, `?debug=1` URL flag for spawn and time controls |
+| Debug | F3 overlay, `?debug=1` URL flag for spawn and time controls; Training Ground (menu, dev builds or `?dev`): immortal DPS dummies and an F2 HTML build panel |
 | Build | `vite build` to static files in `dist/` |
 | Deploy | Upload `dist/` to itch.io (HTML5 game) or GitHub Pages from CI on tags |
 
