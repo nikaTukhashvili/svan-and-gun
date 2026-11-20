@@ -105,20 +105,20 @@ export function neighbours(layout: BarrelLayout, i: number): [number | null, num
   return [left, right];
 }
 
-/** Slots `i` shares a chain with, limited to the `open` (unlocked) slots: [start, end). */
-function chainRange(layout: BarrelLayout, i: number, open: number): [number, number] {
+/** Slots `i` shares a chain with: [start, end). */
+function chainRange(layout: BarrelLayout, i: number): [number, number] {
   const start = chainOfSlot(layout, i) * layout.slotsPerChain;
-  return [start, Math.min(start + layout.slotsPerChain, layout.slots, open)];
+  return [start, Math.min(start + layout.slotsPerChain, layout.slots)];
 }
 
 const snapshot = (build: RunBuild) => build.barrel.map((s) => (s ? { ...s } : null));
 
 /**
- * Drop a module card on slot `i` (only the first `open` slots are usable):
+ * Drop a module card on slot `i` (`open`: which slots are unlocked; locked ones are never used):
  * - the same module, below its max tier: it goes up one tier;
  * - an empty slot: it is put there;
  * - another module: it is inserted, the modules on one side slide towards the nearest empty slot
- *   of the same chain (right first); a full chain replaces the module there.
+ *   of the same chain (right first), never across a locked slot; no room: it replaces the module.
  * Hybrids (workbench only; never cards) are placed at their fixed tier. Mutates `build`.
  */
 export function place(
@@ -127,7 +127,7 @@ export function place(
   layout: BarrelLayout,
   i: number,
   mod: ModSlot,
-  open = build.barrel.length,
+  open: readonly boolean[] = build.barrel.map(() => true),
 ): FusionEvent[] {
   if (i < 0 || i >= build.barrel.length) throw new Error(`No barrel slot ${i}`);
   const target = build.barrel[i] ?? null;
@@ -143,10 +143,11 @@ export function place(
     build.barrel[i] = placed;
     return [{ kind: 'place', at: i, mod: placed, after: snapshot(build) }];
   }
-  const [start, end] = chainRange(layout, i, open);
+  const [start, end] = chainRange(layout, i);
   let gap = -1;
-  for (let j = i + 1; j < end && gap === -1; j++) if (!build.barrel[j]) gap = j;
-  for (let j = i - 1; j >= start && gap === -1; j--) if (!build.barrel[j]) gap = j;
+  // Search outwards through open slots only: a slide never crosses a locked slot.
+  for (let j = i + 1; j < end && open[j] && gap === -1; j++) if (!build.barrel[j]) gap = j;
+  for (let j = i - 1; j >= start && open[j] && gap === -1; j--) if (!build.barrel[j]) gap = j;
   if (gap === -1) {
     build.barrel[i] = placed;
     return [{ kind: 'replace', at: i, old: target, by: placed, after: snapshot(build) }];
@@ -230,7 +231,7 @@ export function previewPlace(
   layout: BarrelLayout,
   i: number,
   mod: ModSlot,
-  open = build.barrel.length,
+  open: readonly boolean[] = build.barrel.map(() => true),
 ): { events: FusionEvent[]; build: RunBuild } {
   const copy = copyBuild(build);
   return { events: place(data, copy, layout, i, mod, open), build: copy };

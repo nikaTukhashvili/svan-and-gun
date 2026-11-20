@@ -30,8 +30,8 @@ export interface LevelUpController {
   /** How many more choices are queued after this one. */
   queuedAfter(): number;
   build(): Readonly<RunBuild>;
-  /** Open barrel slots at the current level. */
-  unlocked(): number;
+  /** Which barrel slots are open at the current level. */
+  unlocked(): readonly boolean[];
   unlockLevel(slot: number): number;
   /** Barrel layout, fittings and per-slot strength for the slot view. */
   pipeline(): Pipeline;
@@ -156,6 +156,8 @@ export class LevelUpScene extends Phaser.Scene {
   private tip: Phaser.GameObjects.Text | null = null;
   /** Last pointer x: a Mutation prefers the neighbour on the side of the slot the pointer is on. */
   private pointerX = 0;
+  /** The slot came from a number key: a Mutation uses its default side (right, else left). */
+  private keyboardSide = false;
   private sfx!: Sfx;
 
   constructor() {
@@ -457,7 +459,7 @@ export class LevelUpScene extends Phaser.Scene {
     );
     barrel.forEach((slot, i) => {
       const cx = x + boxW / 2;
-      const locked = i >= open;
+      const locked = !open[i];
       const def = slot ? modDef(this.gd, slot.id) : null;
       const color = slot ? modColor(this.gd, slot.id) : EMPTY_STROKE;
       const selected = same(this.confirmReplace, { kind: 'barrel', i });
@@ -563,6 +565,7 @@ export class LevelUpScene extends Phaser.Scene {
     });
     rect.on(Phaser.Input.Events.GAMEOBJECT_POINTER_DOWN, (p: Phaser.Input.Pointer) => {
       this.pointerX = p.x;
+      this.keyboardSide = false;
       if (this.animating) return;
       if (filled && !this.placing) {
         const base = { from: ref.i, x0: p.x, y0: p.y, moved: false, ghost: null };
@@ -620,6 +623,7 @@ export class LevelUpScene extends Phaser.Scene {
 
   /** Which side of slot `i` the pointer is on (a Mutation prefers that neighbour). */
   private sideOf(i: number): Side {
+    if (this.keyboardSide) return 'right';
     const s = this.slots.find((v) => v.kind === 'barrel' && v.i === i);
     return s && this.pointerX < s.x ? 'left' : 'right';
   }
@@ -688,6 +692,7 @@ export class LevelUpScene extends Phaser.Scene {
 
   private onPointerMove(p: Phaser.Input.Pointer): void {
     this.pointerX = p.x;
+    this.keyboardSide = false;
     const d = this.drag;
     if (!d) return;
     if (!d.moved) {
@@ -790,9 +795,12 @@ export class LevelUpScene extends Phaser.Scene {
       // Number keys pick a slot of the card's row (1 = leftmost); a replace needs the key twice.
       const i = Number(e.key) - 1;
       const muzzle = this.placing.type === 'muzzle';
-      const count = muzzle ? this.ctl.build().muzzle.length : this.ctl.unlocked();
+      const ok = muzzle ? i >= 0 && i < this.ctl.build().muzzle.length : this.ctl.unlocked()[i] === true;
       if (e.key === 'Escape') this.cancelPlacing();
-      else if (i >= 0 && i < count) this.clickSlot({ kind: muzzle ? 'muzzle' : 'barrel', i });
+      else if (ok) {
+        this.keyboardSide = true; // a Mutation placed by key uses the default side, not the mouse
+        this.clickSlot({ kind: muzzle ? 'muzzle' : 'barrel', i });
+      }
       return;
     }
     if (this.ctl.palette) {

@@ -251,3 +251,11 @@ _Add dated notes here as tasks complete (decisions, deviations, follow-ups)._
 - One looping track for the whole game: `public/audio/run.mp3` (the user's Suno track "Towers of Stubborn"). Loaded in the background when the menu first opens, so boot does not wait for it; plays after the first click (browser audio unlock).
 - Settings: Music volume and a mute toggle (saved; `musicVolume` / `musicMuted` default in the schema, so older saves stay valid). M mutes anywhere.
 - Skipped under automation (`navigator.webdriver`); `tests/e2e/music.spec.ts` hides that flag to test the real path.
+
+**2026-11-21 · Code review fixes (branch `barrel-fusion`)**
+
+- Statuses from several modules now merge (strongest burn damage / stack cap, strongest poison, spreading kept), so module order never changes a hit. Steam bursts when a hit freezes the enemy, whichever module froze it.
+- Tinker never promises more upgrades than a module's cap allows (and `isCardValid` checks it).
+- Slot unlocks are an order: the SMG crit chamber opens at level 1, and Double Barrel halves take turns (before, the right half was empty until level 4, so every other shot had no modules). Inserts never slide across a locked slot.
+- Brimstone's death burst only for enemies Brimstone itself hit (its chain; a crit-chamber Brimstone only on crits), at that hit's strength.
+- Frostbite's poison bonus ends with its poison. A Mutation placed by number key uses the default side, not the mouse position.

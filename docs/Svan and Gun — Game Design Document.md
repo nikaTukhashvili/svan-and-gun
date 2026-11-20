@@ -152,7 +152,7 @@ The Core itself can be improved during a run with **Core Tier** upgrades (Tier I
 
 The barrel is a row of slots. Each slot holds one **module**. Where a module sits does not change what it does to a bullet; what matters is **what it sits next to**: fittings change their neighbours, and two maxed elements side by side can be mutated into a hybrid.
 
-**Barrel length and twist depend on the gun** (`guns.json` > barrel). No gun has more than 12 slots. Slots open with level (`config.slots.barrelUnlockLevels`: 4 at the start, then one more at levels 4, 7, 10 and 13), so space stays scarce and growth stays visible.
+**Barrel length and twist depend on the gun** (`guns.json` > barrel). No gun has more than 12 slots. Slots open with level (`config.slots.barrelUnlockLevels`: 4 at the start, then one more at levels 4, 7, 10 and 13), so space stays scarce and growth stays visible. The list is an unlock *order* (revised 2026-11-21 after code review): a crit chamber opens first so the gun's twist works from level 1, and the two halves of a Double Barrel take turns, so neither half is ever fully locked.
 
 | Gun | Barrel | Twist |
 | --- | --- | --- |

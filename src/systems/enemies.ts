@@ -82,8 +82,14 @@ export interface Enemy {
   freezeImmune: number;
   /** Extra hit damage while frozen (0.3 = +30%). */
   shatter: number;
-  /** Frostbite: poison damage multiplier while chilled or frozen (1 = none). */
+  /** Frostbite: multiplier of the current poison while chilled or frozen (1 = none). Ends with the poison. */
   frostbiteMult: number;
+  /** Highest burn stack cap among the burns on it (burns merge: the strongest numbers win). */
+  burnMax: number;
+  /** Brimstone touched it: if it dies burning and poisoned, it bursts for this (0 = no burst). */
+  blastDamage: number;
+  /** px */
+  blastRadius: number;
   /** Seconds left of the white hit flash. */
   hitFlash: number;
   /** The area boss: moved by BossController through externalVx/Vy, never by behaviours. */
@@ -208,6 +214,9 @@ export class EnemySystem {
         freezeImmune: 0,
         shatter: 0,
         frostbiteMult: 1,
+        burnMax: 0,
+        blastDamage: 0,
+        blastRadius: 0,
         isBoss: false,
         hitFlash: 0,
         externalVx: 0,
@@ -304,6 +313,7 @@ export class EnemySystem {
     e.poisonCanSpread = false;
     e.chillStacks = e.chillTime = e.chillSlow = e.frozenTime = e.freezeImmune = e.shatter = 0;
     e.frostbiteMult = 1;
+    e.burnMax = e.blastDamage = e.blastRadius = 0;
     e.isBoss = false;
     e.hitFlash = 0;
     e.externalVx = e.externalVy = 0;
