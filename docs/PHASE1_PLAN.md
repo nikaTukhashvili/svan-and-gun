@@ -199,3 +199,12 @@ _Add dated notes here as tasks complete (decisions, deviations, follow-ups)._
 - `DpsMeter` (pure, unit tested): rolling DPS, session average, peak, total, hits, crits and status damage. A label over each dummy kind; the pack's numbers are its six members added up. `enemy:damaged` now carries the enemy `uid`.
 - F2 HTML panel: gun, every slot (mod, level, order), Core Tier, perks (C/R/E), Reset build/perks/meters, Respawn dummies, Clear/Spawn enemies, God mode, Market buffs, and an all-target readout. The slot tag logic moved to `cardText.barrelSlotTag` (shared with the level-up screen).
 - Tests: 182 unit tests, new `playground.spec.ts` (3). Every e2e spec passes when run one at a time.
+
+**2026-11-20 · Barrel fusion replaces operators, slot order, levels and the magazine (branch `barrel-fusion`)**
+
+- Design change after playtest: the left→right operators were hard to reason about. Modules now **fuse on contact**: tier = copies fused in, with no cap, and tiers add (Fire 2 + Fire 1 = Fire 3; Fire 3 + Thunder 2 = Plasma 5). An equal-tier, capped version was rejected because the last slots of a full barrel could never max out.
+- 3 elements and 3 hybrids (Plasma, Brimstone, Blight Arc), 6 grey modules, and 5 directional fittings (Booster ▶/◀, Brace, Overcharger, Siphon) that scale their neighbours. Numbers are base + perTier × (tier − 1) in `barrelMods.json`.
+- The magazine is gone: its 6 mods are support perks (no slot, 3 levels, `supportPerks.json`). Barrels are 8 / 8 / 7 with slots unlocking at levels 1, 4, 7, 10 and 13. The gun twists stay (muzzle, crit chamber, Double Barrel halves; nothing fuses or boosts across the gap).
+- Level-up screen: pick a card; a module card asks for a slot, with a hover preview of the fusion cascade, by click or number key; a replace asks twice; swaps fuse too. The Training Ground panel has tiers, a "fuse on place" option and support perks.
+- Tests: 198 unit tests (new `fusion.test.ts`; `operators.test.ts` removed). Every e2e spec passes when run one at a time, including a fusion placement test and a layout screenshot per gun.
+- Balance is untested: hybrid and fitting numbers are first guesses, to tune in the Training Ground.
