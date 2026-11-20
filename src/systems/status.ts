@@ -41,6 +41,15 @@ export class StatusEffectSystem {
   private readonly scratch: Enemy[] = [];
   /** Bursts and freezes since the scene last drained this list. */
   readonly blasts: Blast[] = [];
+  private readonly pendingBursts: {
+    x: number;
+    y: number;
+    radius: number;
+    damage: number;
+    color: number;
+    except?: Enemy;
+  }[] = [];
+  private draining = false;
 
   constructor(
     private readonly enemies: EnemySystem,
@@ -129,11 +138,24 @@ export class StatusEffectSystem {
     }
   }
 
-  /** Area burst around a point (ignores defence): Brimstone on death, Steam on freeze. */
+  /**
+   * Area burst around a point (ignores defence): Brimstone on death, Steam on freeze. Bursts that
+   * set off more bursts (a chain of Brimstone deaths) are queued and run one after another, never
+   * nested, so a long chain cannot overflow the stack.
+   */
   burst(x: number, y: number, radius: number, damage: number, color: number, except?: Enemy): void {
-    this.blasts.push({ x, y, radius, color, kind: 'burst' });
-    for (const e of this.enemies.inRadius(x, y, radius, [])) {
-      if (e !== except) this.enemies.damage(e, damage, true, true);
+    this.pendingBursts.push({ x, y, radius, damage, color, except });
+    if (this.draining) return;
+    this.draining = true;
+    try {
+      for (let b = this.pendingBursts.shift(); b; b = this.pendingBursts.shift()) {
+        this.blasts.push({ x: b.x, y: b.y, radius: b.radius, color: b.color, kind: 'burst' });
+        for (const e of this.enemies.inRadius(b.x, b.y, b.radius, [])) {
+          if (e !== b.except) this.enemies.damage(e, b.damage, true, true);
+        }
+      }
+    } finally {
+      this.draining = false;
     }
   }
 
@@ -195,7 +217,9 @@ export class StatusEffectSystem {
   /** Brimstone: an enemy it hit that dies burning and poisoned bursts (damage ignores defence). */
   private blast(dead: Enemy): void {
     if (dead.blastDamage <= 0 || dead.burnStacks <= 0 || dead.poisonTime <= 0) return;
-    this.burst(dead.x, dead.y, dead.blastRadius, dead.blastDamage, BRIMSTONE_COLOR, dead);
+    const damage = dead.blastDamage;
+    dead.blastDamage = 0; // one burst per death, whatever happens next
+    this.burst(dead.x, dead.y, dead.blastRadius, damage, BRIMSTONE_COLOR, dead);
   }
 
   /** A poisoned enemy dies: the poison jumps once to the nearest enemies, and stops there. */

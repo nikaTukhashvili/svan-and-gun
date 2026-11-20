@@ -86,6 +86,8 @@ export interface Enemy {
   frostbiteMult: number;
   /** Highest burn stack cap among the burns on it (burns merge: the strongest numbers win). */
   burnMax: number;
+  /** True while its death is being handled: it cannot be damaged or killed again (chain bursts). */
+  dying: boolean;
   /** Brimstone touched it: if it dies burning and poisoned, it bursts for this (0 = no burst). */
   blastDamage: number;
   /** px */
@@ -217,6 +219,7 @@ export class EnemySystem {
         burnMax: 0,
         blastDamage: 0,
         blastRadius: 0,
+        dying: false,
         isBoss: false,
         hitFlash: 0,
         externalVx: 0,
@@ -314,6 +317,7 @@ export class EnemySystem {
     e.chillStacks = e.chillTime = e.chillSlow = e.frozenTime = e.freezeImmune = e.shatter = 0;
     e.frostbiteMult = 1;
     e.burnMax = e.blastDamage = e.blastRadius = 0;
+    e.dying = false;
     e.isBoss = false;
     e.hitFlash = 0;
     e.externalVx = e.externalVy = 0;
@@ -327,7 +331,7 @@ export class EnemySystem {
 
   /** Damage from any source. Returns damage dealt. Kills at 0 HP. */
   damage(e: Enemy, raw: number, ignoreDefence: boolean, byStatus = false, crit = false): number {
-    if (!e.active) return 0;
+    if (!e.active || e.dying) return 0;
     if (!byStatus && e.frozenTime > 0) raw *= 1 + e.shatter; // shatter: hits on a frozen enemy
     const amount = ignoreDefence ? raw : applyDefence(raw, e.defence, this.opts.config.combat.minDamage);
     e.hp -= amount;
@@ -342,7 +346,10 @@ export class EnemySystem {
   }
 
   kill(e: Enemy, byStatus = false): void {
-    if (!e.active) return;
+    // `dying`: a death burst from a neighbour must not kill it a second time while onKill runs
+    // (that looped forever: A bursts, kills B, B bursts, "kills" A again, ...).
+    if (!e.active || e.dying) return;
+    e.dying = true;
     if (e.eliteTrait === 'deathBurst') {
       const b = this.opts.config.enemies.elite.deathBurst;
       this.bursts.push({ x: e.x, y: e.y, timeLeft: b.delaySec, radius: u(b.radius), damage: b.damage });
