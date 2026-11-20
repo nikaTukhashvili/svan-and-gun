@@ -223,3 +223,10 @@ _Add dated notes here as tasks complete (decisions, deviations, follow-ups)._
 - A level-up (and a chest) first asks for a path, then shows 3 cards from it: **Favor of the Gods** (elements and blessings, i.e. the run stat cards) or **Gunsmith** (grey modules, fittings, muzzle pieces, magazine work = support perks, Core Tier, Tinker). `cards.json > paths`; the registry checks every card type is in exactly one path. Tinker has its own weight (`typeWeights.tinker`).
 - The build sheet (C) is redrawn: equipment paper doll (Svan Hat, Cloak, Chokha, 2 Rings, Boots; empty until items exist), stats, blessings and Tinker, magazine work, and the gun as core → barrel → muzzle.
 - Tests: path unit tests in `build.test.ts`; e2e path choice. The e2e `pickFirst` presses '1' up to 5 times (path, card, slot, confirm).
+
+**2026-11-21 · Frost, the fourth element (branch `barrel-fusion`)**
+
+- Frost Shot: chill stacks slow enemies; full stacks freeze (no movement or actions, no contact damage, +shatter hit damage). Freeze immunity after a freeze (`config.combat.freezeImmunitySec`), slow cap (`maxChillSlow`); the boss is only slowed.
+- Hybrids: Steam (fire + frost: burn, chill, steam burst on freeze), Frostbite (poison + frost: poison ×2 on chilled enemies), Hailstorm (lightning + frost: chains chill everyone reached). 21 barrel modules now (4 elements, 6 hybrids).
+- Visuals: chilled enemies tinted blue, frozen ones filled ice-white, a pale flash when one freezes.
+- Tests: `tests/unit/frost.test.ts`.

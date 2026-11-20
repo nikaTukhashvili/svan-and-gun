@@ -71,6 +71,19 @@ export interface Enemy {
   poisonSpreadRadius: number;
   /** False for poison that already spread once (spread poison does not spread again). */
   poisonCanSpread: boolean;
+  /** Chill (Frost): stacks slow the enemy; full stacks freeze it. */
+  chillStacks: number;
+  chillTime: number;
+  /** Slow per chill stack (0..1). */
+  chillSlow: number;
+  /** Seconds left frozen solid (no movement, no actions). */
+  frozenTime: number;
+  /** Seconds before it can freeze again. */
+  freezeImmune: number;
+  /** Extra hit damage while frozen (0.3 = +30%). */
+  shatter: number;
+  /** Frostbite: poison damage multiplier while chilled or frozen (1 = none). */
+  frostbiteMult: number;
   /** Seconds left of the white hit flash. */
   hitFlash: number;
   /** The area boss: moved by BossController through externalVx/Vy, never by behaviours. */
@@ -188,6 +201,13 @@ export class EnemySystem {
         poisonSpreadTargets: 0,
         poisonSpreadRadius: 0,
         poisonCanSpread: false,
+        chillStacks: 0,
+        chillTime: 0,
+        chillSlow: 0,
+        frozenTime: 0,
+        freezeImmune: 0,
+        shatter: 0,
+        frostbiteMult: 1,
         isBoss: false,
         hitFlash: 0,
         externalVx: 0,
@@ -282,6 +302,8 @@ export class EnemySystem {
     e.burnStacks = e.burnTime = e.burnDps = 0;
     e.poisonTime = e.poisonDps = e.poisonDuration = e.poisonSpreadTargets = e.poisonSpreadRadius = 0;
     e.poisonCanSpread = false;
+    e.chillStacks = e.chillTime = e.chillSlow = e.frozenTime = e.freezeImmune = e.shatter = 0;
+    e.frostbiteMult = 1;
     e.isBoss = false;
     e.hitFlash = 0;
     e.externalVx = e.externalVy = 0;
@@ -296,6 +318,7 @@ export class EnemySystem {
   /** Damage from any source. Returns damage dealt. Kills at 0 HP. */
   damage(e: Enemy, raw: number, ignoreDefence: boolean, byStatus = false, crit = false): number {
     if (!e.active) return 0;
+    if (!byStatus && e.frozenTime > 0) raw *= 1 + e.shatter; // shatter: hits on a frozen enemy
     const amount = ignoreDefence ? raw : applyDefence(raw, e.defence, this.opts.config.combat.minDamage);
     e.hp -= amount;
     if (!byStatus) e.hitFlash = HIT_FLASH_SEC;
@@ -394,14 +417,26 @@ export class EnemySystem {
       const ux = dx / dist;
       const uy = dy / dist;
 
-      let vx: number;
-      let vy: number;
-      [vx, vy] = this.steer(e, dt, ux, uy, dist, projectiles);
-
-      if (e.avoidTime > 0) {
-        e.avoidTime -= dt;
-        vx += e.avoidX * e.speed * 0.9;
-        vy += e.avoidY * e.speed * 0.9;
+      // Chill and freeze (Frost): timers here, where movement is.
+      if (e.freezeImmune > 0) e.freezeImmune -= dt;
+      if (e.chillTime > 0) {
+        e.chillTime -= dt;
+        if (e.chillTime <= 0) e.chillStacks = 0;
+      }
+      let vx = 0;
+      let vy = 0;
+      if (e.frozenTime > 0) {
+        e.frozenTime -= dt; // frozen solid: no behaviour, no casting, no movement of its own
+      } else {
+        [vx, vy] = this.steer(e, dt, ux, uy, dist, projectiles);
+        if (e.avoidTime > 0) {
+          e.avoidTime -= dt;
+          vx += e.avoidX * e.speed * 0.9;
+          vy += e.avoidY * e.speed * 0.9;
+        }
+        const slow = Math.min(this.opts.config.combat.maxChillSlow, e.chillStacks * e.chillSlow);
+        vx *= 1 - slow;
+        vy *= 1 - slow;
       }
 
       vx += e.kbx;
@@ -673,14 +708,14 @@ export class EnemySystem {
     }
   }
 
-  /** Largest contact damage among enemies touching a circle (the player). 0 if none. */
+  /** Largest contact damage among enemies touching a circle (the player). 0 if none; frozen enemies deal none. */
   contactDamageAt(x: number, y: number, r: number): number {
     const m = r + this.maxRadius;
     this.hash.query(x - m, y - m, x + m, y + m, this.ids);
     let best = 0;
     for (const i of this.ids) {
       const e = this.enemies[i]!;
-      if (!e.active) continue;
+      if (!e.active || e.frozenTime > 0) continue; // frozen solid: harmless to touch
       const min = e.radius + r;
       if ((e.x - x) ** 2 + (e.y - y) ** 2 < min * min && e.contactDamage > best) best = e.contactDamage;
     }

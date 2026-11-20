@@ -1,5 +1,5 @@
 /**
- * StatusEffectSystem (T21): Fire, Poison, Lightning. Effects tick every statusTickSec (0.5 s),
+ * StatusEffectSystem (T21): Fire, Poison, Lightning, Frost (chill → freeze). Effects tick every statusTickSec (0.5 s),
  * not every frame. Elements never read each other; an enemy can carry all three at once.
  * Status damage ignores defence and counts as kills for scrap, score and Scavenger.
  */
@@ -12,24 +12,41 @@ export interface LightningArc {
   y1: number;
 }
 
-/** Brimstone burst: where it went off, for the effects layer. */
+/** A burst (Brimstone, Steam) or a freeze: where it went off, for the effects layer. */
 export interface Blast {
   x: number;
   y: number;
   radius: number;
+  color: number;
 }
+
+/** Chill numbers at the module's tier (Frost Shot and its hybrids). */
+export interface ChillSpec {
+  /** Slow per stack, 0..1. */
+  slow: number;
+  sec: number;
+  stacks: number;
+  freezeSec: number;
+  /** Extra hit damage while frozen, 0.3 = +30%. */
+  shatter: number;
+}
+
+const BRIMSTONE_COLOR = 0xc98a2e;
+const FREEZE_COLOR = 0x9fd8ff;
 
 export class StatusEffectSystem {
   private tickTimer = 0;
   private readonly scratch: Enemy[] = [];
   /** Brimstone: an enemy that dies burning AND poisoned bursts (px radius). Set from the pipeline. */
   deathBlast: { damage: number; radius: number } | null = null;
-  /** Bursts since the scene last drained this list. */
+  /** Bursts and freezes since the scene last drained this list. */
   readonly blasts: Blast[] = [];
 
   constructor(
     private readonly enemies: EnemySystem,
     private readonly tickSec: number,
+    /** After a freeze, no new freeze for this long (config.combat.freezeImmunitySec). */
+    private readonly freezeImmunitySec = 0,
   ) {
     enemies.onKill = (e) => {
       this.blast(e);
@@ -63,6 +80,39 @@ export class StatusEffectSystem {
     e.poisonSpreadTargets = spreadTargets;
     e.poisonSpreadRadius = spreadRadius;
     e.poisonCanSpread = canSpread;
+  }
+
+  /**
+   * Frost: +1 chill stack (timer refreshed). At full stacks the enemy freezes for `freezeSec` and
+   * the stacks reset; then it cannot freeze again for freezeSec + freezeImmunitySec. The boss is
+   * never frozen (only slowed). Returns true when this hit froze it.
+   */
+  applyChill(e: Enemy, c: ChillSpec): boolean {
+    if (e.frozenTime > 0) return false;
+    e.chillStacks = Math.min(e.chillStacks + 1, c.stacks);
+    e.chillTime = c.sec;
+    e.chillSlow = Math.max(e.chillSlow * (e.chillStacks > 1 ? 1 : 0), c.slow);
+    if (e.chillStacks < c.stacks || c.freezeSec <= 0 || e.isBoss || e.freezeImmune > 0) return false;
+    e.frozenTime = c.freezeSec;
+    e.freezeImmune = c.freezeSec + this.freezeImmunitySec;
+    e.shatter = c.shatter;
+    e.chillStacks = 0;
+    e.chillTime = 0;
+    this.blasts.push({ x: e.x, y: e.y, radius: e.radius * 1.4, color: FREEZE_COLOR });
+    return true;
+  }
+
+  /** Frostbite: poison hurts more while the enemy is chilled or frozen. */
+  applyFrostbite(e: Enemy, mult: number): void {
+    e.frostbiteMult = Math.max(e.frostbiteMult, mult);
+  }
+
+  /** Area burst around a point (ignores defence): Brimstone on death, Steam on freeze. */
+  burst(x: number, y: number, radius: number, damage: number, color: number, except?: Enemy): void {
+    this.blasts.push({ x, y, radius, color });
+    for (const e of this.enemies.inRadius(x, y, radius, [])) {
+      if (e !== except) this.enemies.damage(e, damage, true, true);
+    }
   }
 
   /**
@@ -111,7 +161,8 @@ export class StatusEffectSystem {
         if (e.burnTime <= 0) e.burnStacks = 0;
       }
       if (e.poisonTime > 0) {
-        damage += e.poisonDps * Math.min(t, e.poisonTime);
+        const chilled = e.chillStacks > 0 || e.frozenTime > 0;
+        damage += e.poisonDps * Math.min(t, e.poisonTime) * (chilled ? e.frostbiteMult : 1);
         e.poisonTime -= t;
       }
       if (damage > 0) this.enemies.damage(e, damage, true, true);
@@ -122,10 +173,7 @@ export class StatusEffectSystem {
   private blast(dead: Enemy): void {
     const b = this.deathBlast;
     if (!b || dead.burnStacks <= 0 || dead.poisonTime <= 0) return;
-    this.blasts.push({ x: dead.x, y: dead.y, radius: b.radius });
-    for (const e of this.enemies.inRadius(dead.x, dead.y, b.radius, [])) {
-      if (e !== dead) this.enemies.damage(e, b.damage, true, true);
-    }
+    this.burst(dead.x, dead.y, b.radius, b.damage, BRIMSTONE_COLOR, dead);
   }
 
   /** A poisoned enemy dies: the poison jumps once to the nearest enemies, and stops there. */

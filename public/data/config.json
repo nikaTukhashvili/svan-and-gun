@@ -19,7 +19,9 @@
     "minDamage": 1,
     "critMultiplier": 2,
     "maxFrameDeltaMs": 50,
-    "statusTickSec": 0.5
+    "statusTickSec": 0.5,
+    "maxChillSlow": 0.7,
+    "freezeImmunitySec": 3
   },
   "xp": {
     "base": 5,

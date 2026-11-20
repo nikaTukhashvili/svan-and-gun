@@ -164,8 +164,8 @@ The barrel is a row of slots. Each slot holds one **module**. Where a module sit
 
 | Family | Modules | Fuses with |
 | --- | --- | --- |
-| Element (colour) | Ember Shot (fire, red), Venom Shot (poison, green), Thunder Spark (lightning, yellow) | The same element; or a different element, making their hybrid |
-| Hybrid (mixed colour) | Plasma = fire + lightning (orange), Brimstone = fire + poison (amber), Blight Arc = poison + lightning (teal) | Only the same hybrid (its parent elements do not feed it). Never offered as a card: only made by fusing |
+| Element (colour) | Ember Shot (fire, red), Venom Shot (poison, green), Thunder Spark (lightning, yellow), Frost Shot (frost, blue; added 2026-11-21) | The same element; or a different element, making their hybrid |
+| Hybrid (mixed colour) | Plasma = fire + lightning (orange), Brimstone = fire + poison (amber), Blight Arc = poison + lightning (teal), Steam = fire + frost (pale), Frostbite = poison + frost (violet), Hailstorm = lightning + frost (ice blue) | Only the same hybrid (its parent elements do not feed it). Never offered as a card: only made by fusing |
 | Grey | Twin Shot, Ricochet, Long Rifling, Piercing Bore, Heavy Slug, Split Shot | Only the same module |
 | Fitting (directional) | Booster ▶, ◀ Booster, ◀ Brace ▶, Overcharger, Siphon | Never fuses |
 
@@ -202,9 +202,13 @@ The barrel is a row of slots. Each slot holds one **module**. Where a module sit
 | Ember Shot (fire) | Each hit adds a burn stack: 3 damage per second for 3 s, up to 5 stacks | +2 max stacks |
 | Venom Shot (poison) | Poisons for 8 damage per second for 6 s (does not stack); on death it spreads once to 2 enemies within 3 units | +1 spread target |
 | Thunder Spark (lightning) | Each hit chains to 2 more enemies within 4 units for 50% damage | +1 chain |
+| Frost Shot (frost) | Each hit adds a chill stack: −10% speed per stack for 2 s, up to 5. At 5 stacks the enemy **freezes** for 1 s (no movement, no attacks, harmless to touch) and takes +30% hit damage while frozen (shatter). After a freeze it cannot freeze again for 3 s (`config.combat.freezeImmunitySec`); chill never slows by more than 70% (`maxChillSlow`). The boss is slowed but never frozen | +2% slow, +0.2 s freeze, +10% shatter |
 | Plasma (fire + lightning) | Chains to 2 enemies for 60% damage; every enemy it reaches burns (4 per second, 3 s) | +1 chain, +1.5 burn |
 | Brimstone (fire + poison) | Hits burn (4/s) and poison (9/s); an enemy that dies burning and poisoned bursts for 20 damage in 2.5 units | +1.5 burn, +3 poison, +8 burst |
 | Blight Arc (poison + lightning) | Chains to 2 enemies for 60% damage and poisons every enemy it reaches (9/s, 6 s) | +1 chain, +3 poison |
+| Steam (fire + frost) | Burns (4/s) and chills (freezes at 4 stacks); an enemy that freezes bursts in steam for 25 damage in 2.5 units | +1.5 burn, +10 burst |
+| Frostbite (poison + frost) | Poisons (9/s, 6 s) and chills; poison deals ×2 damage to chilled or frozen enemies | +3 poison, +0.25 multiplier |
+| Hailstorm (lightning + frost) | Chains to 2 enemies for 60% damage and chills every enemy it reaches (freezes at 4 stacks) | +1 chain, +2% slow |
 | Twin Shot | Fires 2 bullets at 65% damage each | +1 bullet every 2 tiers |
 | Ricochet | Bullet bounces to 1 nearby enemy | +1 bounce |
 | Long Rifling | Bullet speed +50%, range +30% | +20% speed |
@@ -260,7 +264,6 @@ The magazine and its slots are gone. Its mods became **support perks**: simple u
 
 ### Later (not Phase 1)
 
-- A fourth element (Frost, blue: slow and shatter), giving 3 more hybrids (for example Frost + Fire = Steam).
 - Unlockable cores beyond the starting three, such as a flintlock pistol pair or a crossbow.
 
 ## Gear: items (decided 2026-11-21, replaces run stat perk cards)
@@ -330,7 +333,7 @@ Killed enemies drop **scrap** (XP). Each full scrap bar is a level-up: the game 
 
 | Path | Offers |
 | --- | --- |
-| **Favor of the Gods** | Elements (Ember Shot, Venom Shot, Thunder Spark) and **blessings** (the run stat cards: +move speed, +max HP…; they move onto items once items exist) |
+| **Favor of the Gods** | Elements (Ember Shot, Venom Shot, Thunder Spark, Frost Shot) and **blessings** (the run stat cards: +move speed, +max HP…; they move onto items once items exist) |
 | **Gunsmith** | Grey barrel modules, fittings, muzzle pieces, magazine work (the support perks), Core Tier, Tinker |
 
 - Choosing a path is a commitment for that level-up: there is no going back to look at the other path. The reroll redraws the 3 cards within the chosen path.

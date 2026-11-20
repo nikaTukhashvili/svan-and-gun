@@ -36,6 +36,7 @@ const COUNT_PARAMS = new Set([
   'shards',
   'maxStacks',
   'spreadTargets',
+  'chillStacks',
 ]);
 
 export function modDef(data: GameData, id: string): GameData['barrelMods'][number] {

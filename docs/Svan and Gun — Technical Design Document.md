@@ -251,7 +251,7 @@ Every tunable value is in a JSON file under `public/data`, checked by a zod sche
 | --- | --- | --- |
 | `config.json` | Global numbers | XP curve (xpBase, xpStep), crit multiplier, map size, invulnerability time, slot unlock levels, boss spawn time |
 | `guns.json` | 3 cores | damage, shotsPerSecond, magSize, reload, spreadDeg, range, bulletSpeed, pellets, trait, tierBonus, barrel (slots, chains, critChamberMult), muzzleSlots, startingSupport |
-| `barrelMods.json` | 17 barrel modules: 3 elements, 3 hybrids, 6 grey, 5 fittings | id, family, colour, element / parents, base + perTier numbers (fittings: left, right) |
+| `barrelMods.json` | 21 barrel modules: 4 elements, 6 hybrids, 6 grey, 5 fittings | id, family, colour, element / parents, base + perTier numbers (fittings: left, right) |
 | `muzzles.json` | 7 muzzle pieces, minFanDeg, floors | id, name, colour, base + perLevel stats (bullets, spreadDeg, spreadPct, rangePct, damagePct, fireRatePct, bulletSpeedPct, critChance) |
 | `supportPerks.json` | 6 support perks (were magazine mods) | id, description, values per level (1–3) |
 | `enemies.json` | 5 enemy types | hp, speed, contactDamage, defence, behaviour, behaviour params, scrapDrop, silverChance |

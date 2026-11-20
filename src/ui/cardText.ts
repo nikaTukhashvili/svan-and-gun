@@ -206,7 +206,7 @@ export function pathContents(data: GameData, path: CardPathDef): string[] {
     names.length <= n + 1 ? names.join(', ') : `${names.slice(0, n).join(', ')} and ${names.length - n} more`;
   const names = (family: string) => data.barrelMods.filter((m) => m.family === family).map((m) => m.name);
   const line: Record<CardType, () => string> = {
-    element: () => `Elements: ${few(names('element'), 3)}`,
+    element: () => `Elements: ${few(names('element'), 4)}`,
     runStat: () => 'Blessings: stats for this run',
     grey: () => `Barrel modules: ${few(names('grey'))}`,
     fitting: () => 'Fittings: boost their neighbours',

@@ -61,6 +61,10 @@ export const ConfigSchema = z.strictObject({
     critMultiplier: pos,
     maxFrameDeltaMs: pos,
     statusTickSec: pos,
+    /** Chill (Frost) never slows an enemy by more than this share of its speed. */
+    maxChillSlow: unit01,
+    /** After a freeze ends, the enemy cannot freeze again for this long (it can still be chilled). */
+    freezeImmunitySec: nonNeg,
   }),
   xp: z.strictObject({ base: pos, step: nonNeg }),
   slots: z.strictObject({
@@ -138,7 +142,7 @@ export const GunsSchema = z.array(GunSchema).min(1);
 
 // ---------- barrelMods.json / supportPerks.json ----------
 
-export const ElementSchema = z.enum(['fire', 'poison', 'lightning']);
+export const ElementSchema = z.enum(['fire', 'poison', 'lightning', 'frost']);
 /**
  * Barrel module families (GDD: Barrel fusion):
  * - element: fuses with the same element, or with a different element into a hybrid;
@@ -162,7 +166,7 @@ const tiered = <P extends z.ZodRawShape>(params: P) => {
 
 const modCommon = { name: z.string().min(1), description: z.string().min(1), color };
 
-const element = <Id extends string, E extends 'fire' | 'poison' | 'lightning', P extends z.ZodRawShape>(
+const element = <Id extends string, E extends z.infer<typeof ElementSchema>, P extends z.ZodRawShape>(
   id: Id,
   el: E,
   params: P,
@@ -198,6 +202,15 @@ const fitting = <Id extends string>(id: Id) =>
     right: z.number().min(-1),
   });
 
+/** Chill numbers shared by Frost and its hybrids: % slow per stack, stacks that freeze, shatter %. */
+const chill = {
+  slowPct: pos,
+  chillSec: pos,
+  chillStacks: posInt,
+  freezeSec: nonNeg,
+  shatterPct: nonNeg,
+};
+
 export const BarrelModSchema = z.discriminatedUnion('id', [
   element('ember_shot', 'fire', { dps: pos, durationSec: pos, maxStacks: posInt }),
   element('venom_shot', 'poison', {
@@ -207,6 +220,7 @@ export const BarrelModSchema = z.discriminatedUnion('id', [
     spreadRadius: pos,
   }),
   element('thunder_spark', 'lightning', { chains: posInt, radius: pos, damageFactor: pos }),
+  element('frost_shot', 'frost', chill),
   // Hybrids: both parents' effects plus a combo.
   hybrid('plasma', {
     chains: posInt,
@@ -226,6 +240,16 @@ export const BarrelModSchema = z.discriminatedUnion('id', [
     blastRadius: pos,
   }),
   hybrid('blight_arc', { chains: posInt, radius: pos, damageFactor: pos, poisonDps: pos, poisonSec: pos }),
+  hybrid('steam', {
+    burnDps: pos,
+    burnSec: pos,
+    maxStacks: posInt,
+    ...chill,
+    blastDamage: pos,
+    blastRadius: pos,
+  }),
+  hybrid('frostbite', { poisonDps: pos, poisonSec: pos, ...chill, chilledPoisonMult: pos }),
+  hybrid('hailstorm', { chains: posInt, radius: pos, damageFactor: pos, ...chill }),
   grey('twin_shot', { bullets: z.number().int().min(2), damageFactor: pos, spreadDeg: nonNeg }),
   grey('ricochet', { bounces: posInt, radius: pos, damageFactor: pos }),
   grey('long_rifling', { speedBonus: nonNeg, rangeBonus: nonNeg }),

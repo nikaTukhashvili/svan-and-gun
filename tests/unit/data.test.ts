@@ -27,9 +27,9 @@ describe('game data files', () => {
   it('matches the GDD Phase 1 scope', () => {
     const d = loadGameData();
     expect(d.guns.map((g) => g.id)).toEqual(['long_gun', 'double_barrel', 'scrap_smg']);
-    // 3 elements + 3 hybrids + 6 grey + 5 fittings (GDD: Barrel fusion)
+    // 4 elements + 6 hybrids + 6 grey + 5 fittings (GDD: Barrel fusion)
     const count = (f: string) => d.barrelMods.filter((m) => m.family === f).length;
-    expect([count('element'), count('hybrid'), count('grey'), count('fitting')]).toEqual([3, 3, 6, 5]);
+    expect([count('element'), count('hybrid'), count('grey'), count('fitting')]).toEqual([4, 6, 6, 5]);
     expect(d.supportPerks).toHaveLength(6);
     expect(d.enemies).toHaveLength(5);
     expect(d.buffs).toHaveLength(12);

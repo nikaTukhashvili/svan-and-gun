@@ -97,7 +97,7 @@ test('B opens the workbench: drag modules onto the barrel, merge, remove, close'
   };
   const barrel = () =>
     page.evaluate(() => window.__svan!.run!.build().barrel.map((s) => (s ? `${s.id}:${s.tier}` : null)));
-  const EMBER: [number, number] = [480, 133]; // first chip of the element row
+  const EMBER: [number, number] = [400, 133]; // first chip of the element row
   const CHOKE: [number, number] = [640 - (7 * 150 + 6 * 10) / 2 + 75 + 2 * 160, 133 + 4 * 58]; // muzzle row, 3rd
   const slots = (await page.evaluate(() => window.__svan!.levelUpSlots()))!;
   const slot = (i: number): [number, number] => [slots.barrel[i]!, slots.y];

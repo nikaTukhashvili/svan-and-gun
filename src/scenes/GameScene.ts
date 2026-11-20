@@ -238,7 +238,11 @@ export class GameScene extends Phaser.Scene {
     this.projectiles = new EnemyProjectileSystem(d.config.caps.maxEnemyProjectiles, ENEMY_PROJECTILE_RADIUS);
     this.director = new SpawnDirector(d.timeline, this.rng);
     this.pipeline = buildPipeline(d, this.run.build, this.gun, this.run.support);
-    this.status = new StatusEffectSystem(this.enemies, d.config.combat.statusTickSec);
+    this.status = new StatusEffectSystem(
+      this.enemies,
+      d.config.combat.statusTickSec,
+      d.config.combat.freezeImmunitySec,
+    );
     this.resolver = new HitResolver(
       () => this.pipeline,
       this.bullets,
@@ -415,7 +419,7 @@ export class GameScene extends Phaser.Scene {
 
     // Statuses, explosions, pickups
     this.status.update(dt);
-    for (const bl of this.status.blasts) this.effects.flash(bl.x, bl.y, bl.radius, 0xc98a2e, 0.25);
+    for (const bl of this.status.blasts) this.effects.flash(bl.x, bl.y, bl.radius, bl.color, 0.25);
     this.status.blasts.length = 0;
     this.resolver.update(dt);
     this.updateGrenades(dt);

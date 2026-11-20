@@ -28,7 +28,7 @@ import type { RunBuild, SupportLevels } from './build';
 import type { Enemy, EnemySystem, HitHandler } from './enemies';
 import { modDef, neighbours, tierParams } from './fusion';
 import { muzzleWeaponMods, totalMuzzle, type MuzzleTotals, type MuzzleWeaponMods } from './muzzle';
-import type { LightningArc, StatusEffectSystem } from './status';
+import type { ChillSpec, LightningArc, StatusEffectSystem } from './status';
 import type { ShotSpec } from './weapon';
 
 /** Multipliers the build applies to the Core's numbers. */
@@ -113,6 +113,21 @@ export interface Pipeline {
 }
 
 const ON_FIRE = new Set(['twin_shot', 'long_rifling', 'piercing_bore', 'heavy_slug']);
+const STEAM_COLOR = 0xf2e6e0;
+
+/** Chill numbers from a module's params; strength `k` scales the slow (never past 1). */
+function chillOf(
+  p: { slowPct: number; chillSec: number; chillStacks: number; freezeSec: number; shatterPct: number },
+  k: number,
+): ChillSpec {
+  return {
+    slow: Math.min(1, (p.slowPct / 100) * k),
+    sec: p.chillSec,
+    stacks: p.chillStacks,
+    freezeSec: p.freezeSec,
+    shatter: (p.shatterPct / 100) * k,
+  };
+}
 
 export function layoutOf(gun: GunDef | null, barrelSlots: number): BarrelLayout {
   const b = gun?.barrel ?? { slots: barrelSlots, chains: 1, critChamberMult: 0 };
@@ -375,6 +390,36 @@ export class HitResolver implements HitHandler {
           this.status.applyPoison(e, m.p.poisonDps * k, m.p.poisonSec, 0, 0, false);
         }
         break;
+      case 'frost_shot':
+        if (e.active) this.status.applyChill(e, chillOf(m.p, k));
+        break;
+      case 'steam':
+        if (e.active) {
+          this.status.applyBurn(e, m.p.burnDps * k, m.p.burnSec, m.p.maxStacks);
+          if (this.status.applyChill(e, chillOf(m.p, k)))
+            this.status.burst(e.x, e.y, u(m.p.blastRadius), m.p.blastDamage * k, STEAM_COLOR, e);
+        }
+        break;
+      case 'frostbite':
+        if (e.active) {
+          this.status.applyFrostbite(e, m.p.chilledPoisonMult);
+          this.status.applyPoison(e, m.p.poisonDps * k, m.p.poisonSec, 0, 0, false);
+          this.status.applyChill(e, chillOf(m.p, k));
+        }
+        break;
+      case 'hailstorm': {
+        const chillIt = (t: Enemy) => this.status.applyChill(t, chillOf(m.p, k));
+        if (e.active) chillIt(e);
+        this.status.chainLightning(
+          e,
+          Math.round(m.p.chains * k),
+          u(m.p.radius),
+          b.damage * m.p.damageFactor,
+          this.arcs,
+          chillIt,
+        );
+        break;
+      }
       case 'split_shot':
         this.split(b, m.p, Math.round(m.p.shards * k), x, y);
         break;

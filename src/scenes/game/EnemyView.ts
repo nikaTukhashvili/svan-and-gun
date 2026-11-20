@@ -4,6 +4,9 @@ import type { EnemySystem } from '../../systems/enemies';
 import { Depth } from '../depth';
 import { ELITE_RING_RADIUS, TextureKeys } from '../placeholderTextures';
 
+/** Hit / wind-up flash (white), frozen (ice fill), chilled (blue tint) or plain. */
+type Look = 'flash' | 'frozen' | 'chilled' | 'plain';
+
 /** Shapes whose rotation shows direction (Ali's triangle, Ochopintre's diamond). */
 const FACING_SHAPES = new Set(['triangle', 'diamond']);
 
@@ -15,7 +18,7 @@ export class EnemyView {
   private readonly images: Phaser.GameObjects.Image[] = [];
   private readonly rings: Phaser.GameObjects.Image[] = [];
   private readonly uids: number[] = [];
-  private readonly flashing: boolean[] = [];
+  private readonly looks: Look[] = [];
 
   constructor(
     scene: Phaser.Scene,
@@ -30,7 +33,7 @@ export class EnemyView {
       );
       this.images.push(scene.add.image(0, 0, TextureKeys.player).setVisible(false).setDepth(Depth.enemies));
       this.uids.push(0);
-      this.flashing.push(false);
+      this.looks.push('plain');
     }
   }
 
@@ -57,7 +60,7 @@ export class EnemyView {
           .setAlpha(1)
           .setVisible(true);
         ring.setVisible(e.elite).setScale((e.radius + 6) / ELITE_RING_RADIUS);
-        this.setFlash(e.index, false);
+        this.setLook(e.index, 'plain');
       }
 
       img.setPosition(e.x, e.y);
@@ -67,16 +70,22 @@ export class EnemyView {
         const fy = e.state === 'windup' ? e.dirY : e.vy;
         if (fx * fx + fy * fy > 1) img.setRotation(Math.atan2(fy, fx));
       }
-      this.setFlash(e.index, e.hitFlash > 0 || (e.state === 'windup' && blinkOn));
+      const flash = e.hitFlash > 0 || (e.state === 'windup' && blinkOn);
+      this.setLook(
+        e.index,
+        flash ? 'flash' : e.frozenTime > 0 ? 'frozen' : e.chillStacks > 0 ? 'chilled' : 'plain',
+      );
       img.setAlpha(e.state === 'stunned' ? 0.55 : 1);
     }
   }
 
-  private setFlash(i: number, on: boolean): void {
-    if (this.flashing[i] === on) return;
-    this.flashing[i] = on;
+  private setLook(i: number, look: Look): void {
+    if (this.looks[i] === look) return;
+    this.looks[i] = look;
     const img = this.images[i]!;
-    if (on) img.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL);
+    if (look === 'flash') img.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL);
+    else if (look === 'frozen') img.setTint(0xbfe8ff).setTintMode(Phaser.TintModes.FILL);
+    else if (look === 'chilled') img.setTint(0x8fd0ff).setTintMode(Phaser.TintModes.MULTIPLY);
     else img.clearTint().setTintMode(Phaser.TintModes.MULTIPLY);
   }
 }
