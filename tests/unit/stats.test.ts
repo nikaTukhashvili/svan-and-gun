@@ -66,6 +66,23 @@ describe('PlayerHealth', () => {
     expect(health.hp).toBe(97);
   });
 
+  it('a granted window (after a level-up or chest) blocks hits for its length', () => {
+    const { health } = make();
+    health.grantInvulnerability(2.5);
+    expect(health.takeHit(10)).toBe(0);
+    health.update(2.4);
+    expect(health.takeHit(10)).toBe(0);
+    health.update(0.2);
+    expect(health.takeHit(10)).toBe(10);
+  });
+
+  it('a granted window never shortens a longer one already running', () => {
+    const { health } = make();
+    health.invulnerableLeft = 3;
+    health.grantInvulnerability(1);
+    expect(health.invulnerableLeft).toBe(3);
+  });
+
   it('ignores hits during the invulnerability window, then takes them again', () => {
     const { health } = make();
     health.takeHit(10);

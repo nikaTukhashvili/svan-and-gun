@@ -94,7 +94,7 @@ svan-and-gun/
 - Entities hold state; systems change it. This keeps the rules testable without Phaser.
 - No tuning number is written in code. Every number comes from `public/data` through the DataRegistry.
 - All gameplay randomness goes through the seeded RNG in `core/`. `Math.random()` is allowed only for cosmetic effects.
-- Input is read through a small `InputSource` interface (move vector, aim angle, fire, reload, pause) so gamepad and touch can be added later without touching the Player.
+- Input is read through a small `InputSource` interface (move vector, aim angle, fire, reload, pause, build sheet) so gamepad and touch can be added without touching the Player. Touch was added this way (2026-11-23, see Player > Input).
 
 ## Scenes and game flow
 
@@ -153,6 +153,12 @@ A trigger pull becomes bullets in three steps: the Core builds a base shot, barr
 
 - `Player` is an Arcade Physics sprite with a circle body. Stats are computed once per change (formula under Applying stats) and cached in `PlayerStats`, not recomputed every frame.
 - Input: WASD to a normalised velocity vector; aim is the angle from the player to the mouse in world space; hold-to-fire or auto-fire from settings.
+- Input sources (2026-11-23, GDD: Controls (mobile)). GameScene owns one `Controls` (`scenes/input/Controls.ts`), an `InputSource` that holds both `KeyboardMouseInput` and `TouchInput` and picks one each frame with `controlMode(setting, lastDevice())` from `systems/inputMode.ts` (pure, unit tested):
+  - `deviceTracker.ts` is installed once in `main.ts`. It guesses the device at startup (`(pointer: coarse)` and `maxTouchPoints`; `?touch` forces touch), then listens to pointer events (not mouse events, which phones fake after a tap) and keydown.
+  - `TouchInput`: a pointerdown on the left or right half of the screen claims the move or aim stick, centred where it landed; touches on its buttons (pause, build, reload) are skipped. Stick pointers are **polled** each frame, so a thumb lifted while a modal scene had GameScene paused cannot leave a stick stuck down. `stickVector` clamps to `touch.stickRadius`, removes the dead zone and rescales to 0..1, so `moveX/moveY` now has length 0..1 (not just 0 or 1). Fire = aim stick strength ≥ `touch.fireThreshold`, or auto-fire.
+  - `aimWorld` in touch mode is a point far along the aim (the grenade clamps to its throw range). The crosshair is drawn a fixed distance in front of the player.
+  - Game config `input.activePointers: 3` (two thumbs and a button). GameScene pauses when touch mode is on and `scale.isPortrait`; `index.html` shows a rotate message and sets `touch-action: none`.
+  - The setting is `settings.controls` (`auto | touch | keyboard`, default `auto`, so older saves stay valid).
 - Damage taken: `max(1, hit − defence)`, then 0.5 s of invulnerability. HP 0 emits `run:ended {result:'defeat'}`.
 
 ### WeaponSystem: ammo and reload

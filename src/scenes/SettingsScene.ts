@@ -3,9 +3,18 @@ import { GAME_HEIGHT, GAME_WIDTH, SceneKeys, UiColors } from '../config';
 import { createButton } from '../ui/button';
 import { applyMusicVolume } from './audio/Music';
 import { applySettings, getSave } from './meta';
+import { nextControlSetting, type ControlSetting } from '../systems/inputMode';
+import { lastDevice } from './input/deviceTracker';
+
+const controlsLabel = (c: ControlSetting): string =>
+  c === 'touch'
+    ? 'TOUCH'
+    : c === 'keyboard'
+      ? 'KEYBOARD & MOUSE'
+      : `AUTO (${lastDevice() === 'touch' ? 'touch' : 'keyboard'})`;
 
 /**
- * Settings (T33): volume, music volume, auto-fire, screen shake, fullscreen. Saved immediately.
+ * Settings (T33): volume, music volume, auto-fire, controls, screen shake, fullscreen. Saved immediately.
  * Opened from the menu (replaces it) or over the pause menu (overlay: true).
  */
 export class SettingsScene extends Phaser.Scene {
@@ -45,7 +54,7 @@ export class SettingsScene extends Phaser.Scene {
 
     this.root.add(
       this.add
-        .text(cx, 110, 'SETTINGS', {
+        .text(cx, 95, 'SETTINGS', {
           fontFamily: 'system-ui, sans-serif',
           fontSize: '40px',
           fontStyle: 'bold',
@@ -85,13 +94,13 @@ export class SettingsScene extends Phaser.Scene {
     ];
     this.root.add([
       ...slider(
-        200,
+        180,
         'Volume',
         () => s.volume,
         (v) => (s.volume = v),
       ),
       ...slider(
-        270,
+        245,
         'Music',
         () => s.musicVolume,
         (v) => (s.musicVolume = v),
@@ -99,7 +108,7 @@ export class SettingsScene extends Phaser.Scene {
       createButton(
         this,
         cx,
-        345,
+        310,
         `Music: ${s.musicMuted ? 'MUTED' : 'ON'}  [M]`,
         () => ((s.musicMuted = !s.musicMuted), changed()),
         { width: 380 },
@@ -107,7 +116,7 @@ export class SettingsScene extends Phaser.Scene {
       createButton(
         this,
         cx,
-        415,
+        375,
         `Auto-fire: ${onOff(s.autoFire)}`,
         () => ((s.autoFire = !s.autoFire), changed()),
         { width: 380 },
@@ -115,7 +124,15 @@ export class SettingsScene extends Phaser.Scene {
       createButton(
         this,
         cx,
-        485,
+        440,
+        `Controls: ${controlsLabel(s.controls)}`,
+        () => ((s.controls = nextControlSetting(s.controls)), changed()),
+        { width: 460 },
+      ),
+      createButton(
+        this,
+        cx,
+        505,
         `Screen shake: ${onOff(s.screenShake)}`,
         () => ((s.screenShake = !s.screenShake), changed()),
         {
@@ -125,7 +142,7 @@ export class SettingsScene extends Phaser.Scene {
       createButton(
         this,
         cx,
-        555,
+        570,
         `Fullscreen: ${onOff(this.scale.isFullscreen)}`,
         () => {
           // Must run inside the click: browsers only allow fullscreen from a user gesture.
@@ -137,7 +154,7 @@ export class SettingsScene extends Phaser.Scene {
         },
         { width: 380 },
       ),
-      createButton(this, cx, 635, 'Back', () => this.close(), { width: 220 }),
+      createButton(this, cx, 650, 'Back', () => this.close(), { width: 220 }),
     ]);
   }
 

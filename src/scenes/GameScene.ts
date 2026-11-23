@@ -86,7 +86,7 @@ import { DamageNumbers } from './game/DamageNumbers';
 import { metaBonuses } from '../systems/market';
 import { modName, muzzleLabel, roman, slotLabel } from '../ui/cardText';
 import { itemSummary, rarityCss, rarityName } from '../ui/itemText';
-import { KeyboardMouseInput } from './input/KeyboardMouseInput';
+import { Controls } from './input/Controls';
 
 export interface GameSceneData {
   gunId: string;
@@ -111,6 +111,8 @@ function moduleCard(d: GameData, modId: string): Card {
 }
 const ENEMY_PROJECTILE_RADIUS = 6;
 const MAP_KEY = 'level1';
+/** Touch controls: crosshair distance in front of the player, in screen pixels (cosmetic). */
+const TOUCH_CROSSHAIR_DISTANCE = 90;
 
 /**
  * The run. Rules live in systems/; this scene wires them to Phaser and draws them.
@@ -128,7 +130,10 @@ export class GameScene extends Phaser.Scene {
   private arena!: Arena;
   private player!: Player;
   private playerRadius = 0;
-  private controls!: KeyboardMouseInput;
+  private controls!: Controls;
+  /** Last aim angle from the controls (touch mode draws the crosshair in front of the player). */
+  private lastAim = 0;
+  private readonly cursorAt = { x: 0, y: 0 };
   private weapon!: WeaponSystem;
   private health!: PlayerHealth;
   private slow!: SlowEffect;
@@ -256,7 +261,7 @@ export class GameScene extends Phaser.Scene {
     cam.centerOn(this.player.x, this.player.y);
 
     const settings = getSave(this).state.settings;
-    this.controls = new KeyboardMouseInput(this, settings.autoFire);
+    this.controls = new Controls(this, d.config.touch, settings);
     this.weapon = new WeaponSystem(
       computeWeaponStats(this.gun, this.stats, this.run.build.coreTier),
       this.rng,
@@ -389,9 +394,15 @@ export class GameScene extends Phaser.Scene {
     const px = this.player.x;
     const py = this.player.y;
     const input = this.controls.read(px, py);
+    this.lastAim = input.aimAngle;
 
     if (this.ended) {
-      this.cursor.draw(this.weapon);
+      this.cursor.draw(this.weapon, this.cursorPoint());
+      return;
+    }
+    // A phone turned upright cannot be played (the page asks to turn it back): pause.
+    if (this.controls.mode === 'touch' && this.scale.isPortrait) {
+      this.openPause();
       return;
     }
     if (input.buildSheet) {
@@ -520,7 +531,7 @@ export class GameScene extends Phaser.Scene {
       telegraphSec: atk.boulder.telegraphSec,
     });
     this.player.setBlinking(this.health.invulnerable, time);
-    this.cursor.draw(this.weapon);
+    this.cursor.draw(this.weapon, this.cursorPoint());
     this.numbers.update(dt);
     this.debug.update(dt);
     this.pg?.helper.update(dt);
@@ -718,6 +729,7 @@ export class GameScene extends Phaser.Scene {
       hasMore: () => this.chestQueue.length > 0,
       close: () => {
         this.chestOpen = false;
+        this.health.grantInvulnerability(this.gd.config.player.afterChoiceInvulnerableSec);
         this.scene.resume();
       },
     };
@@ -820,6 +832,8 @@ export class GameScene extends Phaser.Scene {
       hasMore: () => queued() > 0,
       close: () => {
         this.levelUpOpen = false;
+        // The horde kept its place while the player chose: a moment to see where everything is.
+        this.health.grantInvulnerability(this.gd.config.player.afterChoiceInvulnerableSec);
         this.scene.resume();
       },
     };
@@ -925,7 +939,10 @@ export class GameScene extends Phaser.Scene {
   private handleTimelineEvent(ev: TimelineEvent): void {
     switch (ev.type) {
       case 'tutorial':
-        this.showMessage(ev.prompt, ev.durationSec);
+        this.showMessage(
+          this.controls.mode === 'touch' ? (ev.touchPrompt ?? ev.prompt) : ev.prompt,
+          ev.durationSec,
+        );
         break;
       case 'bossWarning':
         this.showMessage('The tower bell rings. Something is coming out.', 5);
@@ -941,6 +958,15 @@ export class GameScene extends Phaser.Scene {
       default:
         break;
     }
+  }
+
+  /** Touch mode: the crosshair sits in front of the player, along the aim. Mouse mode: at the mouse. */
+  private cursorPoint(): { x: number; y: number } | undefined {
+    if (this.controls.mode !== 'touch') return undefined;
+    const cam = this.cameras.main;
+    this.cursorAt.x = this.player.x - cam.scrollX + Math.cos(this.lastAim) * TOUCH_CROSSHAIR_DISTANCE;
+    this.cursorAt.y = this.player.y - cam.scrollY + Math.sin(this.lastAim) * TOUCH_CROSSHAIR_DISTANCE;
+    return this.cursorAt;
   }
 
   private showMessage(text: string, seconds: number): void {
@@ -985,7 +1011,7 @@ export class GameScene extends Phaser.Scene {
     const controller: PauseController = {
       resume: () => {
         this.pauseOpen = false;
-        this.controls.autoFire = getSave(this).state.settings.autoFire; // may have changed in settings
+        this.controls.applySettings(getSave(this).state.settings); // may have changed in settings
         this.scene.resume();
       },
       settings: () => this.scene.launch(SceneKeys.Settings, { overlay: true }),
@@ -1390,6 +1416,8 @@ export class GameScene extends Phaser.Scene {
         itemsTaken: this.itemsTaken,
         silver: this.run.silver,
         result: this.run.result,
+        controlMode: this.controls.mode,
+        aimAngle: this.lastAim,
       }),
       enemies: () =>
         this.enemies.enemies

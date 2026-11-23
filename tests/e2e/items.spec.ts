@@ -32,6 +32,7 @@ test('a chest pauses the run and offers 3 gear choices; picking one equips it', 
   const eq = await page.evaluate(() => window.__svan!.run!.equipment());
   expect(first.kind === 'new' && eq[first.slot]?.id).toBe(first.kind === 'new' && first.item.id);
   expect((await runState(page)).itemsTaken).toBe(1);
+  expect((await runState(page)).invulnerable, 'a moment to get your bearings').toBe(true);
   expect(errors).toEqual([]);
 });
 

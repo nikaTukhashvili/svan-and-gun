@@ -10,13 +10,17 @@ What we are working on, what comes next, and what is parked. What already change
 |---|---|
 | Phase | **1: Free Roam demo**, built and in playtesting (Gate 1 not passed yet) |
 | Live build | https://nikatukhashvili.github.io/svan-and-gun/ (deploys from `main`) |
-| Working branch | `main` (everything merged 2026-11-23) |
-| Tests | 257 unit · e2e specs pass one file at a time |
+| Working branch | `main` (mobile controls merged 2026-11-23) |
+| Tests | 272 unit · e2e specs pass one file at a time |
 | Last updated | 2026-11-23 |
 
 ## Now
 
-_Nothing in progress. Pick from Next._
+- [~] **Mobile: play-test on a real phone**: twin-stick controls are live (see the changelog, 2026-11-23) but were only tested in emulated Chrome. Play the live build on iPhone Safari and Android Chrome. Things to check:
+  - stick size and dead zone feel (`config.json > touch`)
+  - level-up and chest drag-and-drop with a finger (cards and slots may be small)
+  - text readability on a small screen
+  - fullscreen and rotation on iPhone
 
 ## Next: close Phase 1
 

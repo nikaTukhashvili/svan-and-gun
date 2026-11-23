@@ -55,6 +55,8 @@ export const ConfigSchema = z.strictObject({
     /** Second Wind: HP fraction after a revive, and invulnerability right after it. */
     reviveHpFraction: z.number().gt(0).max(1),
     reviveInvulnerableSec: nonNeg,
+    /** Invulnerability after a level-up or chest screen closes, to get your bearings. */
+    afterChoiceInvulnerableSec: nonNeg,
   }),
   combat: z.strictObject({
     minDamage: pos,
@@ -96,6 +98,15 @@ export const ConfigSchema = z.strictObject({
   }),
   pickups: z.strictObject({ mergeThreshold: posInt, magnetSpeed: pos }),
   world: z.strictObject({ spatialHashCellUnits: pos, cullDistanceScreens: pos }),
+  /** Twin-stick touch controls (GDD: Controls > Mobile). */
+  touch: z.strictObject({
+    /** How far the thumb can push a stick from where it landed, in units of screen space. */
+    stickRadius: pos,
+    /** Fraction of the radius that reads as no input. */
+    deadZone: z.number().min(0).lt(1),
+    /** The aim stick fires once pushed past this fraction of its range. */
+    fireThreshold: unit01,
+  }),
   silver: z.strictObject({ perKills: posInt, victoryBonus: nonNegInt }),
   score: z.strictObject({
     perKill: nonNeg,
@@ -445,7 +456,14 @@ export const TimelineSegmentSchema = z.strictObject({
 });
 
 export const TimelineEventSchema = z.discriminatedUnion('type', [
-  z.strictObject({ type: z.literal('tutorial'), at: nonNeg, prompt: z.string().min(1), durationSec: pos }),
+  z.strictObject({
+    type: z.literal('tutorial'),
+    at: nonNeg,
+    prompt: z.string().min(1),
+    /** Shown instead of `prompt` when the player uses touch controls. */
+    touchPrompt: z.string().min(1).optional(),
+    durationSec: pos,
+  }),
   z.strictObject({
     type: z.literal('elite'),
     at: nonNeg,

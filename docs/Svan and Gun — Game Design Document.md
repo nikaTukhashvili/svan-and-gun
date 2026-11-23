@@ -105,6 +105,7 @@ The Svan has a small set of base stats. Market buffs raise them permanently, and
 | Pickup radius | 2 units | How far away scrap and items are pulled in | Yes |
 | HP regen | 0 HP/s | Slow healing over time | Yes |
 | Invulnerability after hit | 0.5 s | Short window after a hit with no further damage | No |
+| Invulnerability after a choice | 2.5 s | After a level-up or chest screen closes (the player blinks), to see where everything is before taking damage again (2026-11-23) | No |
 
 **Controls (PC)**
 
@@ -116,6 +117,23 @@ The Svan has a small set of base stats. Market buffs raise them permanently, and
 | Reload | R, or automatic when the magazine is empty |
 | Build sheet (perks picked, stats, gun; pauses the run) | C |
 | Pause | Esc |
+
+**Controls (mobile, decided 2026-11-23): twin-stick**
+
+Phones and tablets are played in landscape with two virtual sticks. Each stick appears where the thumb lands, so there is no fixed spot to find.
+
+| Action | Input |
+| --- | --- |
+| Move | Left thumb anywhere on the left half of the screen; pushing further walks faster |
+| Aim | Right thumb anywhere on the right half; with no right thumb, the gun faces the way the player walks |
+| Shoot | Push the aim stick past about a third of its range (auto-fire in settings shoots without it) |
+| Reload | RELOAD button on the right edge, or automatic when empty |
+| Build sheet | BUILD button on the right edge; Close button on the sheet |
+| Pause | II button; the run also pauses when the phone is turned upright |
+
+- **Choosing the controls:** Settings > Controls is **Auto** (default), Touch, or Keyboard & mouse. Auto starts in touch mode when the main pointer is a finger, then follows the last device used: a touch switches to the sticks, a key or a mouse switches back, mid-run included (a tablet with a keyboard works either way).
+- The tutorial prompts have touch versions. The page blocks pinch zoom and scrolling, goes fullscreen on the first touch where the browser allows it (not on iPhone), and asks to turn the phone sideways when held upright.
+- Stick size, dead zone and fire threshold are data (`config.json > touch`).
 
 **Damage formula:** final damage = gun damage × damage multiplier × mod multipliers − enemy defence (at least 1).
 
@@ -535,7 +553,7 @@ Tower defence work starts only after playtests show the free roam loop is fun on
 - Can the player find a second gun during a run, or is it always one gun per run (current plan)?
 - The hero's name, and how much story text goes into Phase 1.
 - Elements deal flat damage, so they favour fast guns (the SMG reaches 5 burn stacks in half a second; the Long Gun tops out near 3). If playtests show this, switch burn and poison to a share of the hit's damage.
-- Target platforms after PC: Steam Deck, mobile (which would need auto-aim)?
+- Target platforms after PC: Steam Deck? Mobile browsers are supported with twin-stick controls (2026-11-23); a native mobile release is still open.
 
 **Handoff to the technical design document:** it should cover these systems, in this build order.
 

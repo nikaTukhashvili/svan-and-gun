@@ -13,7 +13,8 @@
     "radius": 0.45,
     "invulnerableSec": 0.5,
     "reviveHpFraction": 0.5,
-    "reviveInvulnerableSec": 2
+    "reviveInvulnerableSec": 2,
+    "afterChoiceInvulnerableSec": 2.5
   },
   "combat": {
     "minDamage": 1,
@@ -62,6 +63,11 @@
   "world": {
     "spatialHashCellUnits": 2,
     "cullDistanceScreens": 1.5
+  },
+  "touch": {
+    "stickRadius": 2,
+    "deadZone": 0.15,
+    "fireThreshold": 0.35
   },
   "silver": {
     "perKills": 20,
