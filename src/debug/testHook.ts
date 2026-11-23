@@ -42,6 +42,10 @@ export interface RunDebugState {
   /** Chest choices taken this run. */
   itemsTaken: number;
   silver: number;
+  /** The device driving the player: twin-stick touch or keyboard and mouse. */
+  controlMode: 'touch' | 'keyboard';
+  /** The aim angle the controls gave last frame (radians). */
+  aimAngle: number;
 }
 
 export interface EnemyDebugState {

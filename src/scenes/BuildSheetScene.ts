@@ -4,6 +4,7 @@ import type { RunBuild } from '../systems/build';
 import { modDef } from '../systems/fusion';
 import type { BarrelLayout } from '../systems/modPipeline';
 import { muzzleDef } from '../systems/muzzle';
+import { createButton } from '../ui/button';
 import { barrelSlotTag, modColor, muzzleColor, roman } from '../ui/cardText';
 import { getGameData } from './gameData';
 
@@ -40,7 +41,7 @@ const GUN_H = 64;
 /**
  * Build sheet (C during a run): what the Svan wears (equipment paper doll), stats against base
  * values, blessings and magazine work, and the gun drawn as core → barrel → muzzle. The run is
- * paused while it is open; C or Esc closes it.
+ * paused while it is open; C, Esc or the Close button closes it.
  */
 export class BuildSheetScene extends Phaser.Scene {
   private sheet!: BuildSheetData;
@@ -74,12 +75,15 @@ export class BuildSheetScene extends Phaser.Scene {
 
     this.drawGun();
 
-    this.text(GAME_WIDTH / 2, GAME_HEIGHT - 24, 'C or Esc to close', 15, UiColors.textDim).setOrigin(0.5);
-
+    let closed = false;
     const close = () => {
+      if (closed) return; // the button and a key in the same frame
+      closed = true;
       this.scene.stop();
       this.sheet.close();
     };
+    // A button as well as the keys: on a phone there is no C or Esc.
+    createButton(this, GAME_WIDTH / 2, GAME_HEIGHT - 28, 'Close  [C]', close, { width: 200, fontSize: 18 });
     this.input.keyboard?.once('keydown-C', close);
     this.input.keyboard?.once('keydown-ESC', close);
   }

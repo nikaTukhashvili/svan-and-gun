@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH, UiColors } from './config';
 import { installTestHook } from './debug/testHook';
+import { installDeviceTracker } from './scenes/input/deviceTracker';
 import { BootScene } from './scenes/BootScene';
 import { GameScene } from './scenes/GameScene';
 import { HudScene } from './scenes/HudScene';
@@ -26,6 +27,8 @@ const config: Phaser.Types.Core.GameConfig = {
   // uneven (measured ~16% slow in headless Chrome). The run timer must be accurate (boss at
   // 5:30), so use raw deltas; GameScene clamps each frame to config.combat.maxFrameDeltaMs.
   fps: { smoothStep: false },
+  // Twin-stick touch needs two thumbs at once, plus a spare for a button press.
+  input: { activePointers: 3 },
   physics: {
     default: 'arcade',
     arcade: { gravity: { x: 0, y: 0 }, debug: false },
@@ -48,5 +51,17 @@ const config: Phaser.Types.Core.GameConfig = {
   ],
 };
 
+installDeviceTracker();
 const game = new Phaser.Game(config);
 installTestHook(game);
+
+// On a phone, go fullscreen on the first touch (browsers only allow it inside a user gesture).
+// Skipped under automation, like the music. iPhones have no fullscreen API for pages.
+if (!navigator.webdriver) {
+  const goFullscreen = (e: PointerEvent): void => {
+    if (e.pointerType !== 'touch') return;
+    window.removeEventListener('pointerup', goFullscreen);
+    if (!game.scale.isFullscreen && game.scale.fullscreen.available) game.scale.startFullscreen();
+  };
+  window.addEventListener('pointerup', goFullscreen);
+}

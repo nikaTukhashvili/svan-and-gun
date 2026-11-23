@@ -78,6 +78,12 @@ export class PlayerHealth {
     return amount;
   }
 
+  /** Be invulnerable for at least `sec` from now (never shortens a longer window already running). */
+  grantInvulnerability(sec: number): void {
+    if (this.dead) return;
+    this.invulnerableLeft = Math.max(this.invulnerableLeft, sec);
+  }
+
   heal(amount: number): void {
     if (this.dead) return;
     this.hp = Math.min(this.maxHp, this.hp + amount);

@@ -4,7 +4,7 @@
  * player or weapon code (TDD: Project structure > Rules).
  */
 export interface InputState {
-  /** Normalised movement direction (length 0 or 1). */
+  /** Movement direction times strength: length 0..1 (keys give 0 or 1, a touch stick anything between). */
   moveX: number;
   moveY: number;
   /** Aim angle in radians from the player. */

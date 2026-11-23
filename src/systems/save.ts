@@ -9,6 +9,7 @@
  *   and shows "progress will not be saved".
  */
 import { z } from 'zod';
+import { CONTROL_SETTINGS } from './inputMode';
 
 export const SAVE_VERSION = 1;
 
@@ -26,6 +27,8 @@ const SettingsSchema = z.strictObject({
   musicVolume: z.number().min(0).max(1).default(0.6),
   musicMuted: z.boolean().default(false),
   autoFire: z.boolean(),
+  /** Auto follows the last device used (touch or keyboard and mouse). */
+  controls: z.enum(CONTROL_SETTINGS).default('auto'),
   screenShake: z.boolean(),
   fullscreen: z.boolean(),
 });
@@ -59,6 +62,7 @@ export function freshSave(): SaveV1 {
       musicVolume: 0.6,
       musicMuted: false,
       autoFire: false,
+      controls: 'auto',
       screenShake: true,
       fullscreen: false,
     },

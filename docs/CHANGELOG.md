@@ -16,6 +16,21 @@ _Nothing yet._
 
 ## 2026-11-23
 
+### Invulnerability after a level-up or chest
+
+- Playtest: after picking an upgrade the run resumes straight into the horde, which is chaotic. Closing a level-up or chest screen now gives 2.5 s of invulnerability (`config.json > player.afterChoiceInvulnerableSec`). The player blinks as after a hit. It never shortens a longer window already running (e.g. a revive). Several queued level-ups give one window at the end, not one each.
+- Tests: 2 new PlayerHealth unit tests (272 total); the level-up and chest e2e tests check the window.
+
+### Mobile: twin-stick touch controls
+
+- Phones and tablets play with two floating sticks: left thumb moves (analog, so moving at partial speed now works), right thumb aims, and pushing it past `config.touch.fireThreshold` fires. With no right thumb the gun faces the way the player walks. RELOAD, BUILD and pause (II) buttons sit on the right edge. Twin-stick was chosen over auto-aim (the GDD had assumed mobile would need auto-aim).
+- Detection: Settings > Controls is Auto (default), Touch or Keyboard & mouse. Auto checks whether the main pointer is a finger at startup, then follows the last device used, switching mid-run. `?touch` forces touch mode for testing on a desktop.
+- Phone page: no pinch zoom or scrolling, fullscreen on the first touch (where the browser allows it), a "turn your phone sideways" message, and the run pauses while the phone is upright. Tutorial prompts have touch versions (`timeline.json > touchPrompt`).
+- Fix found on the way: the build sheet could only be closed with C or Esc, which a phone doesn't have. It now has a Close button.
+- New data: `config.json > touch` (stick radius, dead zone, fire threshold). New setting `controls` (defaults to `auto`, so older saves still load).
+- Tests: 270 unit tests (new `inputMode.test.ts`: device guess, mode, stick maths, save default). New `touch.spec.ts` drives real multi-touch through Chrome: both sticks at once, the three buttons and the Settings row. Every e2e spec passes when run one at a time.
+- Not tested on a real phone yet.
+
 ### Progress tracking docs
 
 - `docs/ROADMAP.md` (Now / Next / Backlog / Open questions) and this changelog replace the Phase 1 plan's log, which moved here. `PHASE1_PLAN.md` and its CSV are archived.

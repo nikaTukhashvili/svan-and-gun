@@ -30,8 +30,9 @@ export class CursorOverlay {
     scene.events.once('shutdown', () => scene.input.setDefaultCursor('default'));
   }
 
-  draw(weapon: WeaponSystem): void {
-    const p = this.scene.input.activePointer;
+  /** `at`: screen point to draw at instead of the mouse (touch controls aim with a stick). */
+  draw(weapon: WeaponSystem, at?: { x: number; y: number }): void {
+    const p = at ?? this.scene.input.activePointer;
     const g = this.g;
     g.clear();
 

@@ -37,14 +37,27 @@
     }
   ],
   "events": [
-    { "at": 0, "type": "tutorial", "prompt": "WASD to move", "durationSec": 6 },
+    {
+      "at": 0,
+      "type": "tutorial",
+      "prompt": "WASD to move",
+      "touchPrompt": "Left thumb to move",
+      "durationSec": 6
+    },
     {
       "at": 6,
       "type": "tutorial",
       "prompt": "Aim with the mouse, hold the left button to shoot",
+      "touchPrompt": "Right thumb to aim, push it further to shoot",
       "durationSec": 6
     },
-    { "at": 14, "type": "tutorial", "prompt": "R to reload (it also reloads when empty)", "durationSec": 6 },
+    {
+      "at": 14,
+      "type": "tutorial",
+      "prompt": "R to reload (it also reloads when empty)",
+      "touchPrompt": "Tap RELOAD to reload (it also reloads when empty)",
+      "durationSec": 6
+    },
     { "at": 120, "type": "elite", "enemy": "ali", "trait": "fast" },
     { "at": 210, "type": "swarmRing", "enemy": "kaji", "count": 30, "radius": 13 },
     { "at": 240, "type": "elite", "enemy": "ochopintre", "trait": "deathBurst" },

@@ -58,6 +58,9 @@ test('scrap levels the player up; the game pauses for a card; picking one resume
   const s = await runState(page);
   expect(s.level).toBe(2);
   expect(s.levelUpOpen).toBe(false);
+  // A moment of invulnerability to get your bearings after choosing.
+  expect(s.invulnerable).toBe(true);
+  expect(await page.evaluate(() => window.__svan!.run!.damagePlayer(10))).toBe(0);
   expect(errors).toEqual([]);
 });
 
