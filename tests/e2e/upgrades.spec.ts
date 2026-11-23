@@ -267,7 +267,7 @@ test('a muzzle card dragged onto the same piece upgrades it', async ({ page }) =
   expect(errors).toEqual([]);
 });
 
-test('kills drop scrap that flies to the player; an elite drops a Gunsmith chest', async ({ page }) => {
+test('kills drop scrap that flies to the player; an elite drops a chest of gear', async ({ page }) => {
   const errors = trackErrors(page);
   await startRun(page, 'long_gun');
   await page.evaluate(() => {
@@ -276,20 +276,20 @@ test('kills drop scrap that flies to the player; an elite drops a Gunsmith chest
     run.spawnEnemies('ali', 1, { elite: true, trait: 'fast', radius: 1 }); // drops scatter ~0.5 u: stay inside the 2 u pickup radius
     run.killAll();
   });
-  // Scrap and the chest land inside the pickup radius and are collected; the chest opens a free choice.
-  await levelUpOpen(page);
-  // Choose until the level-up and the chest are both done, then the silver lands too.
-  // The chest may land a moment after the first choice, opening its own screen.
-  let choices = 0;
-  const deadline = Date.now() + 5_000;
-  while (choices < 2 && Date.now() < deadline) {
-    if (await page.evaluate(() => window.__svan!.activeScenes().includes('levelUp'))) {
-      await pickFirst(page);
-      choices++;
-    }
+  // Scrap and the chest land inside the pickup radius and are collected: the level-up from the
+  // scrap and the chest's gear choice (its own screen), in whichever order they are picked up.
+  const deadline = Date.now() + 6_000;
+  while (Date.now() < deadline) {
+    const s = await runState(page);
+    if (s.itemsTaken >= 1 && s.level >= 2 && !s.levelUpOpen && !s.chestOpen) break;
+    const scenes = await page.evaluate(() => window.__svan!.activeScenes());
+    if (scenes.includes('levelUp')) await pickFirst(page);
+    else if (scenes.includes('chest')) await page.keyboard.press('1');
     await page.waitForTimeout(150);
   }
-  expect(choices).toBeGreaterThanOrEqual(2); // a level-up plus the chest's free card
+  expect((await runState(page)).itemsTaken).toBe(1);
+  const worn = await page.evaluate(() => window.__svan!.run!.equipment().filter((i) => i !== null));
+  expect(worn).toHaveLength(1);
   await page.waitForFunction(() => window.__svan!.run!.state().silver >= 10, null, { timeout: 3_000 });
   expect((await runState(page)).level).toBeGreaterThanOrEqual(2); // the elite's 10 scrap
   expect(errors).toEqual([]);

@@ -1,7 +1,8 @@
 /**
  * The gun build for one run: the barrel (fusing modules, GDD: Barrel fusion), the muzzle
  * (GDD: Muzzle) and Core Tier, plus
- * the level-up card draw that changes it. Support perks and run stat perks live on the run.
+ * the level-up card draw that changes it. Support perks live on the run; run stats come from
+ * items (systems/items.ts), not cards.
  *
  * CardDraw builds the list of VALID cards first and only then picks (TDD: CardDraw algorithm):
  * - module cards are always valid (tiers have no cap; a full barrel can still fuse or replace);
@@ -12,7 +13,7 @@
  * - muzzle cards are always valid (same piece = upgrade, else fit or replace).
  */
 import type { RNG } from '../core/rng';
-import type { CardType, GameData, GunDef, ModFamily, Rarity, StatId, StatMode } from '../data/types';
+import type { CardType, GameData, GunDef, ModFamily } from '../data/types';
 import {
   maxTier,
   moveModule,
@@ -25,7 +26,6 @@ import {
 } from './fusion';
 import { chainOfSlot, layoutOf, type BarrelLayout } from './modPipeline';
 import { placeMuzzle, type MuzzleSlot } from './muzzle';
-import { addBonus, type StatBonuses } from './stats';
 
 export interface ModSlot {
   id: string;
@@ -50,7 +50,6 @@ export type Card =
   /** Mutation: drag onto two maxed, different elements side by side to make their hybrid. */
   | { type: 'mutation' }
   | { type: 'coreTier'; toTier: number }
-  | { type: 'runStat'; cardId: string; rarity: Rarity; stat: StatId; mode: StatMode; value: number }
   | { type: 'supportPerk'; perkId: string; toLevel: number }
   /** A muzzle piece; the player picks the muzzle slot. `owned`: the gun already has one (can upgrade). */
   | { type: 'muzzle'; muzzleId: string; owned: boolean }
@@ -60,7 +59,6 @@ export type Card =
 /** What a picked card changes on the run. */
 export interface BuildTarget {
   build: RunBuild;
-  runBonuses: StatBonuses;
   support: SupportLevels;
 }
 
@@ -122,7 +120,6 @@ export function cardType(card: Card): CardType {
       return 'tinker';
     case 'mutation':
     case 'coreTier':
-    case 'runStat':
     case 'supportPerk':
     case 'muzzle':
       return card.type;
@@ -144,8 +141,6 @@ export function cardKey(c: Card): string {
       return `mod:${c.modId}`;
     case 'coreTier':
       return 'core';
-    case 'runStat':
-      return `stat:${c.cardId}`;
     case 'supportPerk':
       return `support:${c.perkId}`;
     case 'muzzle':
@@ -219,16 +214,6 @@ export function rollTinker(data: GameData, build: RunBuild, rng: RNG): Card | nu
   return { type: 'randomUpgrade', upgrades };
 }
 
-export function rollRarity(data: GameData, level: number, rng: RNG): Rarity {
-  const r = data.cards.rarity;
-  const lv = Math.max(0, level - 1);
-  return rng.weightedKey({
-    common: r.weights.common,
-    rare: r.weights.rare + r.shiftPerLevel.rare * lv,
-    epic: r.weights.epic + r.shiftPerLevel.epic * lv,
-  });
-}
-
 /**
  * Draw `count` distinct valid cards (TDD: CardDraw). With `path`, only that path's card types
  * (cards.json > paths) are in the pool.
@@ -236,7 +221,8 @@ export function rollRarity(data: GameData, level: number, rng: RNG): Rarity {
 export function drawCards(
   data: GameData,
   build: RunBuild,
-  level: number,
+  /** Player level (kept for callers; cards no longer depend on it). */
+  _level: number,
   rng: RNG,
   support: SupportLevels = {},
   count = data.cards.cardsPerLevelUp,
@@ -244,14 +230,6 @@ export function drawCards(
   gun: GunDef | null = null,
 ): Card[] {
   let pool: [Card, number][] = [...candidateCards(data, build, support, gun)];
-  // Blessings (run stat cards) share the runStat weight.
-  const perkWeight = data.cards.typeWeights.runStat / data.cards.runStats.length;
-  for (const rs of data.cards.runStats) {
-    pool.push([
-      { type: 'runStat', cardId: rs.id, rarity: 'common', stat: rs.stat, mode: rs.mode, value: 0 },
-      perkWeight,
-    ]);
-  }
   const tinker = rollTinker(data, build, rng);
   if (tinker) pool.push([tinker, data.cards.typeWeights.tinker]);
   if (path !== null) pool = pool.filter(([c]) => pathOf(data, c) === path);
@@ -262,14 +240,7 @@ export function drawCards(
     hand.push(pool[picked]![0]);
     pool.splice(picked, 1);
   }
-
-  // Run stat cards get their rarity (and so their value) only once drawn.
-  return hand.map((c) => {
-    if (c.type !== 'runStat') return c;
-    const def = data.cards.runStats.find((r) => r.id === c.cardId)!;
-    const rarity = rollRarity(data, level, rng);
-    return { ...c, rarity, value: def.values[rarity] };
-  });
+  return hand;
 }
 
 /**
@@ -301,9 +272,6 @@ export function applyCard(
       return [];
     case 'coreTier':
       build.coreTier = card.toTier;
-      return [];
-    case 'runStat':
-      addBonus(target.runBonuses, card.stat, card.mode, card.value);
       return [];
     case 'supportPerk':
       target.support[card.perkId] = card.toLevel;
@@ -344,8 +312,6 @@ export function isCardValid(
   gun: GunDef | null = null,
 ): boolean {
   switch (card.type) {
-    case 'runStat':
-      return true;
     case 'mutation':
       return mutationPairs(data, build, layoutOf(gun, build.barrel.length)).length > 0;
     case 'module':

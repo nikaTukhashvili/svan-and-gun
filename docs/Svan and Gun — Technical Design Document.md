@@ -68,12 +68,13 @@ Code is split by role: scenes draw and take input, systems hold the rules, entit
 svan-and-gun/
   public/
     data/            guns.json, barrelMods.json, supportPerks.json, enemies.json,
-                     boss.json, timeline.json, buffs.json, cards.json, drops.json, config.json
+                     boss.json, timeline.json, buffs.json, cards.json, items.json, drops.json,
+                     config.json
     maps/            level1.json (bounds, player start, tower, obstacles)
   src/
     main.ts          Phaser game config, scene list
     scenes/          BootScene, MenuScene, GunSelectScene, GameScene,
-                     HudScene, LevelUpScene, PauseScene, ResultsScene,
+                     HudScene, LevelUpScene, ChestScene, PauseScene, ResultsScene,
                      MarketScene, HighScoreScene, SettingsScene
     entities/        Player, Enemy, Bullet, Pickup, Boss, Obstacle
     systems/         WeaponSystem, ModPipeline, StatusEffectSystem,
@@ -107,6 +108,7 @@ Each screen is a Phaser scene. GameScene runs the world; HudScene runs on top of
 | GameScene | Map, player, enemies, bullets, pickups, spawn director, boss | Gun select, Retry | Replaces |
 | HudScene | HP, ammo, scrap bar, level, timer, kills, silver, mod slots, boss bar | GameScene | Runs in parallel |
 | LevelUpScene | 3 cards, reroll, slot view with barrel slot swap, replace prompt | `player:levelUp` event | Pauses GameScene |
+| ChestScene | 3 gear choices (new item with a compare view, or an upgrade), the worn items below | A chest picked up (after any queued level-ups) | Pauses GameScene |
 | PauseScene | Resume, Settings, Quit run | Esc | Pauses GameScene |
 | ResultsScene | Victory/defeat, score, New best, build, silver; saves | `run:ended` event | Replaces |
 | MarketScene | Buy buffs, refund all | Menu, Results | Replaces |
@@ -218,12 +220,23 @@ Scrap fills a level bar; each level opens LevelUpScene with 3 cards from CardDra
 1. Build candidates from the RunState:
    - a module card for every element, grey module and fitting (always valid: tiers have no cap, and a full barrel can still fuse or replace). Hybrids are never offered. A module that would fuse with one in the barrel weighs `cards.fusesWithOwnedMult` times more and is marked `fuses`;
    - a support perk card for each support perk below its max level;
-   - a Core Tier card if below Tier V;
-   - run stat cards (always valid).
-2. Pick 3 distinct candidates using the type weights in `cards.json` (element, grey, fitting, coreTier, runStat, supportPerk), each split evenly across that type's cards. A Tinker card (random +1 tiers for modules in the barrel, resolved at draw time as slot + module id) joins with the weight of one perk when the barrel has a tiered module.
-3. For each run stat card picked, roll a rarity (common, rare, epic; weights from `cards.json`, shifted slightly towards rare with level) to set its value. Module, support and Core Tier cards have no rarity.
-4. A module card is applied with the slot the player chose: `fusion.place` (place / fuse with cascade / replace).
-5. Reroll repeats steps 2–3 and uses one charge from `RunState.rerolls`.
+   - a Core Tier card if below Tier V.
+2. Pick 3 distinct candidates using the type weights in `cards.json` (element, grey, fitting, coreTier, supportPerk, muzzle, mutation, tinker), each split evenly across that type's cards. A Tinker card (random +1 tiers for modules in the barrel, resolved at draw time as slot + module id) joins when the barrel has a module that can go up a tier.
+3. A module card is applied with the slot the player chose: `fusion.place` (place / upgrade / insert / replace).
+4. Reroll repeats step 2 and uses one charge from `RunState.rerolls`.
+
+Run stat cards (blessings) are gone (2026-11-22): run stats come from items.
+
+### Items (2026-11-22, GDD: Gear)
+
+`systems/items.ts` (pure) holds the rules; `items.json` holds every number.
+
+- `Item = { id, level, extras[] }`, where `id` is a theme or a legendary. `RunState.equipment` has one entry per `items.equipment` position (hat, cloak, chokha, ring, ring, boots).
+- Numbers: `base + perLevel × (level − 1)` for the main stat and for each extra. An extra stat is rolled on reaching each level in `items.extraStatLevels` (3 = Magic, 5 = Rare), never the main stat and never twice. Legendaries have no extras.
+- `itemBonuses(equipment)` gives `StatBonuses` (applied like run bonuses, see Applying stats) and element strength bonuses. `buildPipeline(..., boosts)` multiplies the strength `k` of a module by `1 + bonus` for each of its elements (hybrids count both parents), and the Ember Smith's `fireTiers` raises the tier fire modules are read at.
+- `chestOffer(equipment, kind, rng)`: a legendary choice by `legendaryChance` (placed in an empty slot of its kind, else over the weaker item), then a new item for an empty slot while one exists, then new items and upgrades by `upgradeWeight` / `newItemWeight`. Never the same item twice or a theme already worn; an upgrade pre-rolls the extra stat it will gain, so the card can show it. `applyChoice` returns the replaced item; GameScene salvages it into scrap (`salvageScrap`).
+- Chest pickups carry their kind as the value (`chestValue('supply' | 'elite')`). `SupplyChestTimer` says when supply chests are due; GameScene drops them at an open spot `minDistance`–`maxDistance` units away.
+- `systems/passives.ts`: `activePassives(equipment)` reads the legendary passives at the item's level; `PassiveRuntime` tracks standing still, kill bursts and the Mountain Runner charge, and returns live `StatBonuses`. GameScene recomputes the stats only when those flip.
 
 The RNG is seeded per run (seed stored in RunState), so a bug report can include the seed and the same draws can be replayed in a test.
 
@@ -233,13 +246,13 @@ The RNG is seeded per run (seed stored in RunState), so a bug report can include
 // mode "mult": fire rate, bullet speed, damage, reload speed, move speed, pickup radius, scrap gain
 finalStat = baseStat
   * (1 + metaBuffBonus(stat))   // market levels from MetaState
-  * (1 + runBonus(stat));       // run stat cards and Core Tiers
+  * (1 + runBonus(stat));       // items worn and live legendary passives
 
 // mode "add": max HP (+10), defence (+1), HP regen (+0.2/s)
 finalStat = baseStat + metaBuffBonus(stat) + runBonus(stat);
 ```
 
-Each buff in `buffs.json` and each run stat card in `cards.json` carries `mode: "add" | "mult"`.
+Each buff in `buffs.json` and each item stat in `items.json` carries `mode: "add" | "mult"`. Core Tiers apply in `computeWeaponStats`.
 
 Market buffs are read once when GameScene starts. Changing them mid-run is not possible because the Market is only reachable from menus.
 
@@ -257,7 +270,8 @@ Every tunable value is in a JSON file under `public/data`, checked by a zod sche
 | `enemies.json` | 5 enemy types | hp, speed, contactDamage, defence, behaviour, behaviour params, scrapDrop, silverChance |
 | `boss.json` | Devi Chieftain | hp, phases (threshold, attacks, cooldowns), enrageAfter |
 | `timeline.json` | Level 1 schedule | segments (from, to, maxAlive, spawnPerSecond, weights) and events |
-| `cards.json` | Card rules | rarity weights, run stat cards, reroll count |
+| `cards.json` | Card rules | paths, type weights, Tinker, reroll count |
+| `items.json` | Gear | paper-doll positions, themes (slot, effect, base, perLevel), extra stats, extra-stat levels, legendaries (main stat, passive), chest kinds, salvage, supply chest timing |
 | `buffs.json` | Market buffs | id, stat, mode (add or mult), perLevel, maxLevel, baseCost, costGrowth |
 
 One more file, `drops.json`, holds map drop rates: chance per kill for Kubdari and Hunting Horn, silver chance, scrap size by enemy, crate contents, and when small scrap merges. The map layout lives in `maps/level1.json` (see World, physics and timing).

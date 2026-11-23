@@ -8,6 +8,8 @@ import { SceneKeys } from '../config';
 import type { RunResult } from '../core/events';
 import type { Card, RunBuild } from '../systems/build';
 import type { DpsStats } from '../systems/dpsMeter';
+import type { ChestChoice, ChestKind, Equipment } from '../systems/items';
+import type { PlayerStats } from '../systems/stats';
 import type { LevelUpScene } from '../scenes/LevelUpScene';
 import { freshSave, type SaveSystem, type SaveV1 } from '../systems/save';
 
@@ -34,8 +36,11 @@ export interface RunDebugState {
   result: RunResult | null;
   level: number;
   levelUpOpen: boolean;
+  chestOpen: boolean;
   /** Cards picked on level-up screens this run. */
   cardsPicked: number;
+  /** Chest choices taken this run. */
+  itemsTaken: number;
   silver: number;
 }
 
@@ -75,6 +80,16 @@ export interface RunDebugApi {
   queueHand(cards: Card[]): void;
   /** Support perk levels taken. */
   support(): Record<string, number>;
+  /** Items worn, one entry per paper-doll position. */
+  equipment(): Equipment;
+  /** Put an item (theme or legendary id, or null) in a paper-doll position; extras are rolled. */
+  setItem(slot: number, id: string | null, level?: number): void;
+  /** Queue a chest as if one was picked up; it opens on the next frame. */
+  queueChest(kind?: ChestKind): void;
+  /** The open chest's choices (empty when no chest is open). */
+  chestChoices(): ChestChoice[];
+  /** Current player stats (base, market, items and passives). */
+  stats(): PlayerStats;
   pickups(): { kind: string; value: number; x: number; y: number }[];
   /** Present in the Training Ground only. */
   playground?: PlaygroundDebugApi;

@@ -18,6 +18,8 @@ export interface HudModel {
   message: string | null;
   /** The gun build, as text (bottom left). */
   slots: string;
+  /** Legendary passives at work ("Tower Keeper: +30% damage"); empty when none. */
+  passives: string;
 }
 
 const FONT = 'system-ui, sans-serif';
@@ -36,6 +38,7 @@ export class HudScene extends Phaser.Scene {
   private bossText!: Phaser.GameObjects.Text;
   private messageText!: Phaser.GameObjects.Text;
   private slotsText!: Phaser.GameObjects.Text;
+  private passiveText!: Phaser.GameObjects.Text;
   private last = '';
 
   constructor() {
@@ -60,6 +63,7 @@ export class HudScene extends Phaser.Scene {
     this.timeText = this.add.text(GAME_WIDTH / 2, 18, '', style(24)).setOrigin(0.5, 0);
     this.statsText = this.add.text(GAME_WIDTH - 16, 18, '', style(16)).setOrigin(1, 0);
     this.bossText = this.add.text(GAME_WIDTH / 2, 56, '', style(16, UiColors.danger)).setOrigin(0.5, 0);
+    this.passiveText = this.add.text(16, 92, '', style(13, '#ffb347'));
     this.slotsText = this.add
       .text(16, GAME_HEIGHT - 14, '', {
         fontFamily: FONT,
@@ -105,6 +109,7 @@ export class HudScene extends Phaser.Scene {
     this.bossText.setVisible(m.boss !== null);
     this.messageText.setVisible(m.message !== null);
     if (m.message !== null && this.messageText.text !== m.message) this.messageText.setText(m.message);
+    if (this.passiveText.text !== m.passives) this.passiveText.setText(m.passives);
     const slots = m.slots + '      [C] build';
     if (this.slotsText.text !== slots) this.slotsText.setText(slots);
     const bossLabel = m.boss ? `${m.boss.name.toUpperCase()}${m.boss.enraged ? '  ·  ENRAGED' : ''}` : '';

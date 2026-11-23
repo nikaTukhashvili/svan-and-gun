@@ -2,13 +2,12 @@ import Phaser from 'phaser';
 import { u } from '../../core/math';
 import type { EnemySystem } from '../../systems/enemies';
 import { Depth } from '../depth';
-import { ELITE_RING_RADIUS, TextureKeys } from '../placeholderTextures';
+import { ELITE_RING_RADIUS, FACING_SHAPES, TextureKeys } from '../placeholderTextures';
 
 /** Hit / wind-up flash (white), frozen (ice fill), chilled (blue tint) or plain. */
 type Look = 'flash' | 'frozen' | 'chilled' | 'plain';
 
 /** Shapes whose rotation shows direction (Ali's triangle, Ochopintre's diamond). */
-const FACING_SHAPES = new Set(['triangle', 'diamond']);
 
 /**
  * One sprite (+ elite ring) per enemy pool slot, mirrored from EnemySystem every frame.

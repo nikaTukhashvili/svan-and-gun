@@ -82,6 +82,7 @@ test('switching the gun in the panel restarts the Training Ground with that gun'
 test('B opens the workbench: drag modules onto the barrel, upgrade, move, remove, close', async ({
   page,
 }) => {
+  test.setTimeout(60_000); // about a dozen drags, each waiting for the merge animation
   const errors = trackErrors(page);
   await openFromMenu(page);
   await page.keyboard.press('b');

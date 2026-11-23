@@ -12,6 +12,14 @@ import type {
   ElementSchema,
   EnemySchema,
   GunSchema,
+  ItemEffectSchema,
+  ItemExtraStatSchema,
+  ItemSlotSchema,
+  ItemsSchema,
+  ItemStatSchema,
+  ItemThemeSchema,
+  LegendaryPassiveSchema,
+  LegendarySchema,
   ModFamilySchema,
   SupportPerkSchema,
   MapSchema,
@@ -61,6 +69,15 @@ export type PlaygroundDef = z.infer<typeof PlaygroundSchema>;
 export type PlaygroundDummyDef = z.infer<typeof PlaygroundDummySchema>;
 export type StatId = z.infer<typeof StatIdSchema>;
 export type StatMode = z.infer<typeof StatModeSchema>;
+export type ItemsDef = z.infer<typeof ItemsSchema>;
+export type ItemSlotKind = z.infer<typeof ItemSlotSchema>;
+export type ItemStat = z.infer<typeof ItemStatSchema>;
+export type ItemEffect = z.infer<typeof ItemEffectSchema>;
+export type ItemThemeDef = z.infer<typeof ItemThemeSchema>;
+export type ItemExtraStatDef = z.infer<typeof ItemExtraStatSchema>;
+export type LegendaryDef = z.infer<typeof LegendarySchema>;
+export type LegendaryPassive = z.infer<typeof LegendaryPassiveSchema>;
+export type PassiveType = LegendaryPassive['type'];
 
 /** Numbers of a tiered barrel module, e.g. BarrelModParams<'ember_shot'>. */
 export type BarrelModParams<Id extends TieredModDef['id']> = Extract<TieredModDef, { id: Id }>['base'];
@@ -80,6 +97,7 @@ export interface GameData {
   readonly boss: BossDef;
   readonly timeline: TimelineDef;
   readonly cards: CardsDef;
+  readonly items: ItemsDef;
   readonly buffs: readonly BuffDef[];
   readonly drops: DropsDef;
   readonly playground: PlaygroundDef;

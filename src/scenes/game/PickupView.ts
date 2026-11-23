@@ -2,6 +2,7 @@ import type Phaser from 'phaser';
 import type { DropsDef } from '../../data/types';
 import type { Destructibles } from '../../systems/destructibles';
 import { scrapSize, type Pickup, type PickupSystem } from '../../systems/pickups';
+import { chestKindOf } from '../../systems/items';
 import { Depth } from '../depth';
 import { TextureKeys } from '../placeholderTextures';
 
@@ -22,7 +23,7 @@ function textureFor(p: Pickup, drops: DropsDef): string {
     case 'horn':
       return TextureKeys.huntingHorn;
     case 'chest':
-      return TextureKeys.chest;
+      return chestKindOf(p.value) === 'elite' ? TextureKeys.chestElite : TextureKeys.chestSupply;
   }
 }
 

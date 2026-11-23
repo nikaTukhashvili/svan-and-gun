@@ -5,7 +5,7 @@ import type { GameEvents, RunResult } from '../core/events';
 import { formatTime, toUnits, u } from '../core/math';
 import { RNG } from '../core/rng';
 import { getById } from '../data/registry';
-import type { GameData, GunDef, Rarity, TimelineEvent } from '../data/types';
+import type { GameData, GunDef, TimelineEvent } from '../data/types';
 import { testHookEnabled } from '../debug/testHook';
 import { PlaygroundPanel, type PlaygroundController } from '../debug/playgroundPanel';
 import { Player } from '../entities/Player';
@@ -32,11 +32,35 @@ import { Progression } from '../systems/progression';
 import { StatusEffectSystem } from '../systems/status';
 import { EnemySystem, type EliteTrait } from '../systems/enemies';
 import { EnemyProjectileSystem, type ProjectileRequest } from '../systems/enemyProjectiles';
+import {
+  applyChoice,
+  chestKindOf,
+  chestOffer,
+  chestValue,
+  createEquipment,
+  createItem,
+  itemBonuses,
+  itemName,
+  rarityOf,
+  salvageScrap,
+  slotName,
+  SupplyChestTimer,
+  type ChestChoice,
+  type ChestKind,
+  type ItemBonuses,
+} from '../systems/items';
+import {
+  activePassives,
+  fireTierBonus,
+  PassiveRuntime,
+  PIERCE_ALL,
+  type ActivePassives,
+} from '../systems/passives';
 import { PlayerHealth } from '../systems/playerHealth';
 import { createRunState, type RunState } from '../systems/runState';
 import { SlowEffect } from '../systems/slow';
 import { pickSpawnPoint, SpawnDirector, type SpawnRequest } from '../systems/spawnDirector';
-import { baseStats, computeStats, emptyBonuses, type PlayerStats } from '../systems/stats';
+import { baseStats, computeStats, emptyBonuses, type PlayerStats, type StatBonuses } from '../systems/stats';
 import { computeWeaponStats, WeaponSystem, type ShotSpec } from '../systems/weapon';
 import { Depth } from './depth';
 import { buildArena, type Arena } from './game/Arena';
@@ -51,7 +75,8 @@ import { ProjectileView } from './game/ProjectileView';
 import type { HudModel } from './HudScene';
 import { MUTATION_CHIP, type LevelUpController } from './LevelUpScene';
 import type { PauseController } from './PauseScene';
-import { EQUIPMENT_SLOTS, type BuildSheetData, type SheetLine } from './BuildSheetScene';
+import type { BuildSheetData, SheetLine } from './BuildSheetScene';
+import type { ChestController } from './ChestScene';
 import type { ResultsData } from './ResultsScene';
 import { getGameData } from './gameData';
 import { getSave } from './meta';
@@ -59,7 +84,8 @@ import { bindMusicKeys, startMusic } from './audio/Music';
 import { SFX_NAMES, sfxFor, type Sfx, type SfxName } from './audio/Sfx';
 import { DamageNumbers } from './game/DamageNumbers';
 import { metaBonuses } from '../systems/market';
-import { modName, muzzleLabel, roman, slotLabel, STAT_LABELS } from '../ui/cardText';
+import { modName, muzzleLabel, roman, slotLabel } from '../ui/cardText';
+import { itemSummary, rarityCss, rarityName } from '../ui/itemText';
 import { KeyboardMouseInput } from './input/KeyboardMouseInput';
 
 export interface GameSceneData {
@@ -128,7 +154,15 @@ export class GameScene extends Phaser.Scene {
   private pickups!: PickupSystem;
   private destructibles!: Destructibles;
   private pickupView!: PickupView;
-  private chestsPending = 0;
+  /** Chests picked up and not opened yet, oldest first. */
+  private chestQueue: ChestKind[] = [];
+  private chestOpen = false;
+  private chestChoices: ChestChoice[] = [];
+  private supplyChests!: SupplyChestTimer;
+  /** Gear: what the items add up to, and the legendary passives worn (refreshed with the stats). */
+  private gear: ItemBonuses = { stats: emptyBonuses(), elements: {} };
+  private passiveDefs: ActivePassives = {};
+  private passives!: PassiveRuntime;
   private levelUpOpen = false;
   private hand: Card[] = [];
   /** Test hook: the next hand, instead of a draw. */
@@ -136,6 +170,7 @@ export class GameScene extends Phaser.Scene {
   /** Level-up path picked for the current choice (cards.json > paths); null = not chosen yet. */
   private levelPath: string | null = null;
   private cardsPicked = 0;
+  private itemsTaken = 0;
   private grenades: { x: number; y: number; timeLeft: number; damage: number; radius: number }[] = [];
   private boss!: BossController;
   private rubbleGroup!: Phaser.Physics.Arcade.StaticGroup;
@@ -164,13 +199,19 @@ export class GameScene extends Phaser.Scene {
     this.run = createRunState(data.gunId, data.seed);
     this.run.build = buildForGun(this.gun); // each gun has its own barrel length, twist and muzzle
     this.run.support = startingSupport(this.gun); // Double Barrel: Grenade Mag from the start
+    this.run.equipment = createEquipment(this.gd);
     this.ended = false;
-    this.chestsPending = 0;
+    this.chestQueue = [];
+    this.chestOpen = false;
+    this.chestChoices = [];
+    this.gear = { stats: emptyBonuses(), elements: {} };
+    this.passiveDefs = {};
     this.levelUpOpen = false;
     this.hand = [];
     this.forcedHand = null;
     this.levelPath = null;
     this.cardsPicked = 0;
+    this.itemsTaken = 0;
     this.grenades = [];
     this.rubbleBodies = new Map();
     this.summons.length = 0;
@@ -200,7 +241,9 @@ export class GameScene extends Phaser.Scene {
       this.pgOptions && !this.pgOptions.marketBuffs
         ? emptyBonuses()
         : metaBonuses(getSave(this).state, d.buffs);
-    this.stats = computeStats(baseStats(d.config, d.cards), this.meta, this.run.runBonuses);
+    this.passives = new PassiveRuntime(() => this.passiveDefs);
+    this.supplyChests = new SupplyChestTimer(d.items.supplyChest);
+    this.stats = computeStats(baseStats(d.config, d.cards), this.meta, this.runBonuses());
 
     this.arena = buildArena(this, map);
     this.playerRadius = u(d.config.player.radius);
@@ -242,7 +285,7 @@ export class GameScene extends Phaser.Scene {
     });
     this.projectiles = new EnemyProjectileSystem(d.config.caps.maxEnemyProjectiles, ENEMY_PROJECTILE_RADIUS);
     this.director = new SpawnDirector(d.timeline, this.rng);
-    this.pipeline = buildPipeline(d, this.run.build, this.gun, this.run.support);
+    this.pipeline = this.makePipeline();
     this.status = new StatusEffectSystem(
       this.enemies,
       d.config.combat.statusTickSec,
@@ -314,6 +357,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       if (elite) this.run.eliteKills++;
+      if (this.passives.onKill()) this.refreshStats();
       if (!this.pgOptions) this.dropAt(rollEnemyDrops(d.drops, this.rng, type, elite), x, y);
       const scavenge = this.pipeline.support.scavengerChance;
       if (scavenge > 0 && this.rng.chance(scavenge)) this.weapon.addRound();
@@ -328,6 +372,7 @@ export class GameScene extends Phaser.Scene {
       this.scene.stop(SceneKeys.BuildSheet);
       this.game.events.off(Phaser.Core.Events.BLUR, this.openPause, this);
       this.scene.stop(SceneKeys.LevelUp);
+      this.scene.stop(SceneKeys.Chest);
       this.pg?.panel?.destroy();
       if (window.__svan) delete window.__svan.run;
     });
@@ -360,7 +405,8 @@ export class GameScene extends Phaser.Scene {
 
     this.run.timeSec += dt;
 
-    // Player
+    // Player (and the legendary passives that watch him)
+    if (this.passives.update(dt, input.moveX !== 0 || input.moveY !== 0)) this.refreshStats();
     this.slow.update(dt);
     this.player.move(input.moveX, input.moveY, u(this.stats.moveSpeed) * this.slow.multiplier);
     this.player.aim(input.aimAngle);
@@ -378,6 +424,8 @@ export class GameScene extends Phaser.Scene {
         this.firedEvents,
       );
     for (const r of this.spawnRequests) this.handleSpawn(r, px, py);
+    if (!this.pg)
+      for (let n = this.supplyChests.update(this.run.timeSec); n > 0; n--) this.dropSupplyChest(px, py);
     for (const ev of this.firedEvents) {
       this.bus.emit('timeline:event', { type: ev.type, at: ev.at });
       this.handleTimelineEvent(ev);
@@ -392,6 +440,9 @@ export class GameScene extends Phaser.Scene {
     // Gun and bullets
     this.shots.length = 0;
     this.weapon.update(dt, input, this.shots);
+    // Boots of the Mountain Runner: a fully charged gun's next shot pierces everything.
+    if (this.shots.length > 0 && this.passives.consumeCharge())
+      for (const s of this.shots) s.pierce = PIERCE_ALL;
     applyOnFire(this.pipeline, this.shots);
     for (const shot of this.shots) this.bullets.spawn(shot, px, py);
     this.bullets.update(dt, this.arena.field, (b, x0, y0, x1, y1) => this.hitBullet(b, x0, y0, x1, y1));
@@ -474,13 +525,10 @@ export class GameScene extends Phaser.Scene {
     this.debug.update(dt);
     this.pg?.helper.update(dt);
 
-    if (
-      !this.pg &&
-      !this.levelUpOpen &&
-      !this.ended &&
-      (this.progression.pending > 0 || this.chestsPending > 0)
-    ) {
-      this.openLevelUp();
+    // Level-ups first, then chests (a salvaged item's scrap may queue a level-up).
+    if (!this.pg && !this.modalOpen && !this.ended) {
+      if (this.progression.pending > 0) this.openLevelUp();
+      else if (this.chestQueue.length > 0) this.openChest();
     }
   }
 
@@ -529,9 +577,12 @@ export class GameScene extends Phaser.Scene {
 
   private collect(p: Pickup): void {
     switch (p.kind) {
-      case 'scrap':
+      case 'scrap': {
         this.progression.add(p.value * this.stats.scrapGain);
+        const heal = this.passives.scrapHeal(); // Chokha of the Feast
+        if (heal > 0) this.health.heal(heal);
         break;
+      }
       case 'silver':
         this.run.silver += p.value;
         break;
@@ -542,7 +593,7 @@ export class GameScene extends Phaser.Scene {
         this.pickups.magnetAllScrap();
         break;
       case 'chest':
-        this.chestsPending++;
+        this.chestQueue.push(chestKindOf(p.value));
         break;
     }
     this.bus.emit('pickup:collected', { kind: p.kind, value: p.value });
@@ -588,12 +639,88 @@ export class GameScene extends Phaser.Scene {
   /** Stats or build changed (card picked, slots swapped): recompute player and gun numbers. */
   private refreshStats(): void {
     const d = this.gd;
-    this.stats = computeStats(baseStats(d.config, d.cards), this.meta, this.run.runBonuses);
-    this.pipeline = buildPipeline(d, this.run.build, this.gun, this.run.support);
+    this.gear = itemBonuses(d, this.run.equipment);
+    this.passiveDefs = activePassives(d, this.run.equipment);
+    this.stats = computeStats(baseStats(d.config, d.cards), this.meta, this.runBonuses());
+    this.pipeline = this.makePipeline();
     this.weapon.setStats(
       computeWeaponStats(this.gun, this.stats, this.run.build.coreTier, this.pipeline.weaponMods),
     );
     this.health.setStats(this.stats);
+  }
+
+  /** Run-only bonuses: items worn plus the legendary passives at work right now. */
+  private runBonuses(): StatBonuses {
+    const out: StatBonuses = { add: { ...this.gear.stats.add }, mult: { ...this.gear.stats.mult } };
+    const live = this.passives.bonuses();
+    for (const mode of ['add', 'mult'] as const)
+      for (const [stat, v] of Object.entries(live[mode]) as [keyof StatBonuses['add'], number][])
+        out[mode][stat] = (out[mode][stat] ?? 0) + v;
+    return out;
+  }
+
+  private makePipeline(): Pipeline {
+    return buildPipeline(this.gd, this.run.build, this.gun, this.run.support, {
+      elements: this.gear.elements,
+      fireTiers: fireTierBonus(this.passiveDefs),
+    });
+  }
+
+  /** A level-up or chest screen is open (the run is paused for a choice). */
+  private get modalOpen(): boolean {
+    return this.levelUpOpen || this.chestOpen;
+  }
+
+  /** A supply chest lands at a random open spot near the player (GDD: Where items come from). */
+  private dropSupplyChest(px: number, py: number): void {
+    const cfg = this.gd.items.supplyChest;
+    const field = this.arena.field;
+    const margin = u(1);
+    for (let tries = 0; tries < 20; tries++) {
+      const a = this.rng.range(0, Math.PI * 2);
+      const r = u(this.rng.range(cfg.minDistance, cfg.maxDistance));
+      const x = px + Math.cos(a) * r;
+      const y = py + Math.sin(a) * r;
+      if (x < margin || y < margin || x > field.width - margin || y > field.height - margin) continue;
+      if (field.blocked(x, y, margin)) continue;
+      this.pickups.spawn('chest', chestValue('supply'), x, y);
+      this.showMessage('A supply chest has landed nearby', 3);
+      return;
+    }
+  }
+
+  private openChest(): void {
+    this.chestOpen = true;
+    this.chestChoices = chestOffer(this.gd, this.run.equipment, this.chestQueue[0]!, this.rng);
+    this.scene.pause();
+    this.scene.launch(SceneKeys.Chest, { controller: this.chestController() });
+  }
+
+  private chestController(): ChestController {
+    const d = this.gd;
+    return {
+      title: () => (this.chestQueue[0] === 'elite' ? "Elite's chest" : 'Supply chest'),
+      queuedAfter: () => this.chestQueue.length - 1,
+      equipment: () => this.run.equipment,
+      choices: () => this.chestChoices,
+      pick: (index) => {
+        const choice = this.chestChoices[index];
+        if (!choice) return;
+        const old = applyChoice(this.run.equipment, choice);
+        this.itemsTaken++;
+        // A replaced item is salvaged into scrap.
+        if (old) this.progression.add(salvageScrap(d, old));
+        this.chestQueue.shift();
+        this.refreshStats();
+        if (this.chestQueue.length > 0)
+          this.chestChoices = chestOffer(d, this.run.equipment, this.chestQueue[0]!, this.rng);
+      },
+      hasMore: () => this.chestQueue.length > 0,
+      close: () => {
+        this.chestOpen = false;
+        this.scene.resume();
+      },
+    };
   }
 
   private openLevelUp(): void {
@@ -635,12 +762,9 @@ export class GameScene extends Phaser.Scene {
 
   private levelUpController(): LevelUpController {
     const d = this.gd;
-    const queued = () => this.progression.pending + this.chestsPending;
+    const queued = () => this.progression.pending;
     return {
-      title: () =>
-        this.progression.pending > 0
-          ? `Level ${this.progression.level - this.progression.pending + 1}`
-          : 'Chest: a free upgrade',
+      title: () => `Level ${this.progression.level - this.progression.pending + 1}`,
       queuedAfter: () => queued() - 1,
       build: () => this.run.build,
       unlocked: () => this.openSlots(),
@@ -671,16 +795,7 @@ export class GameScene extends Phaser.Scene {
       pick: (card, slot, side) => {
         const events = applyCard(d, this.gun, this.run, card, slot, this.openSlots(), side);
         this.cardsPicked++;
-        if (card.type === 'runStat') {
-          this.run.picks.push({
-            kind: 'perk',
-            cardId: card.cardId,
-            rarity: card.rarity,
-            stat: card.stat,
-            mode: card.mode,
-            value: card.value,
-          });
-        } else if (card.type === 'randomUpgrade') {
+        if (card.type === 'randomUpgrade') {
           this.run.picks.push({ kind: 'tinker', upgrades: card.upgrades });
         }
         if (card.type === 'module' && slot !== undefined) {
@@ -693,7 +808,6 @@ export class GameScene extends Phaser.Scene {
           });
         }
         if (this.progression.pending > 0) this.progression.consume();
-        else this.chestsPending--;
         this.refreshStats();
         if (queued() > 0) this.startChoice();
         return events;
@@ -737,7 +851,22 @@ export class GameScene extends Phaser.Scene {
         this.run.build.muzzle.map((m) => (m ? muzzleLabel(this.gd, m) : '—')).join('  |  ') +
         '      Core Tier ' +
         this.run.build.coreTier,
+      passives: this.passiveStatus(),
     };
+  }
+
+  /** HUD line for the legendary passives at work. */
+  private passiveStatus(): string {
+    const p = this.passiveDefs;
+    const parts: string[] = [];
+    if (this.passives.towerKeeperActive && p.towerKeeper)
+      parts.push(`TOWER KEEPER +${p.towerKeeper.damagePct}% damage`);
+    if (this.passives.wolfActive && p.wolfPelt) parts.push(`WOLF PELT +${p.wolfPelt.speedPct}% speed`);
+    if (p.mountainRunner) {
+      const c = this.passives.chargeFraction;
+      parts.push(c >= 1 ? 'CHARGED: next shot pierces all' : `Charge ${Math.floor(c * 100)}%`);
+    }
+    return parts.join('   ·   ');
   }
 
   // ---------- spawning ----------
@@ -850,7 +979,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private openPause(): void {
-    if (this.pauseOpen || this.levelUpOpen || this.ended || !this.scene.isActive()) return;
+    if (this.pauseOpen || this.modalOpen || this.ended || !this.scene.isActive()) return;
     this.pauseOpen = true;
     this.scene.pause();
     const controller: PauseController = {
@@ -872,7 +1001,7 @@ export class GameScene extends Phaser.Scene {
 
   /** C: pause and show the build sheet (perks picked, stats, gun). */
   private openBuildSheet(): void {
-    if (this.pauseOpen || this.levelUpOpen || this.ended) return;
+    if (this.pauseOpen || this.modalOpen || this.ended) return;
     this.pauseOpen = true;
     this.scene.pause();
     this.scene.launch(SceneKeys.BuildSheet, this.buildSheetData());
@@ -880,52 +1009,15 @@ export class GameScene extends Phaser.Scene {
 
   private buildSheetData(): BuildSheetData {
     const d = this.gd;
-    const rarityColor = { common: '#c9ccd1', rare: '#6aa8ff', epic: '#c98bff' } as const;
-    const fmt = (stat: string, mode: 'add' | 'mult', v: number) =>
-      (mode === 'mult' ? `+${Math.round(v * 100)}%` : `+${Math.round(v * 10) / 10}`) +
-      ' ' +
-      (STAT_LABELS[stat] ?? stat);
-
-    // Perks stacked by card: "Light Boots ×2  +25% move speed".
-    const perks = new Map<
-      string,
-      {
-        name: string;
-        count: number;
-        total: number;
-        stat: string;
-        mode: 'add' | 'mult';
-        best: 'common' | 'rare' | 'epic';
-      }
-    >();
-    const rank = { common: 0, rare: 1, epic: 2 } as const;
-    const lines: SheetLine[] = [];
-    for (const p of this.run.picks) {
-      if (p.kind === 'tinker') {
-        const names = p.upgrades.map((u) => modName(d, u.modId) + ' +1').join(', ');
-        lines.push({ text: `Gunsmith's Whim: ${names}`, color: '#5bc0be' });
-        continue;
-      }
-      const def = d.cards.runStats.find((r) => r.id === p.cardId);
-      const e = perks.get(p.cardId) ?? {
-        name: def?.name ?? p.cardId,
-        count: 0,
-        total: 0,
-        stat: p.stat,
-        mode: p.mode,
-        best: p.rarity,
-      };
-      e.count++;
-      e.total += p.value;
-      if (rank[p.rarity] > rank[e.best]) e.best = p.rarity;
-      perks.set(p.cardId, e);
-    }
-    const perkLines: SheetLine[] = [...perks.values()].map((e) => ({
-      text: `${e.name}${e.count > 1 ? ` ×${e.count}` : ''}   ${fmt(e.stat, e.mode, e.total)}`,
-      color: rarityColor[e.best],
+    const tinker: SheetLine[] = this.run.picks.map((p) => ({
+      text: `Gunsmith's Whim: ${p.upgrades.map((u) => modName(d, u.modId) + ' +1').join(', ')}`,
+      color: '#5bc0be',
     }));
+    const gear: SheetLine[] = this.run.equipment.flatMap((item) =>
+      item ? [{ text: itemSummary(d, item), color: rarityCss(rarityOf(d, item)) }] : [],
+    );
 
-    // Stats: base (no market, no cards) against now.
+    // Stats: base (no market, no items) against now.
     const base = baseStats(d.config, d.cards);
     const now = this.stats;
     const row = (label: string, b: number, n: number, unit = '', digits = 1): SheetLine => {
@@ -938,7 +1030,7 @@ export class GameScene extends Phaser.Scene {
     const pct = (v: number) => v * 100;
     const stats: SheetLine[] = [
       row('Max HP', base.maxHp, now.maxHp, '', 0),
-      row('Armour', base.defence, now.defence, '', 0),
+      row('Armour', base.defence, now.defence, '', 1),
       row('Move speed', base.moveSpeed, now.moveSpeed, ' u/s'),
       row('Damage', pct(base.damage), pct(now.damage), '%', 0),
       row('Fire rate', pct(base.fireRate), pct(now.fireRate), '%', 0),
@@ -954,11 +1046,20 @@ export class GameScene extends Phaser.Scene {
       .map((p) => ({ text: `${p.name}  ${roman(this.run.support[p.id]!)} / ${roman(p.levels.length)}` }));
 
     return {
-      perks: [...perkLines, ...lines],
+      gear,
+      tinker,
       support,
       stats,
-      // Items are not built yet: the paper doll shows the slots empty.
-      equipment: EQUIPMENT_SLOTS.map((slot) => ({ slot, item: null })),
+      equipment: this.run.equipment.map((item, i) => ({
+        slot: slotName(d, i),
+        item: item
+          ? {
+              name: itemName(d, item.id),
+              color: rarityCss(rarityOf(d, item)),
+              detail: `Lv ${item.level} · ${rarityName(rarityOf(d, item))}`,
+            }
+          : null,
+      })),
       gun: {
         name: this.gun.name,
         build: this.run.build,
@@ -1086,7 +1187,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Training Ground: the level-up screen in Workbench mode (every module, drag and drop). */
   private openWorkbench(): void {
-    if (this.levelUpOpen || this.pauseOpen || this.ended) return;
+    if (this.modalOpen || this.pauseOpen || this.ended) return;
     const d = this.gd;
     const all = () => allOpen(this.run.build.barrel.length);
     const changed = <T>(value: T): T => {
@@ -1165,18 +1266,9 @@ export class GameScene extends Phaser.Scene {
     this.scene.restart(data);
   }
 
-  private applyPerk(cardId: string, rarity: Rarity): void {
-    const def = getById(this.gd.cards.runStats, cardId, 'run stat card');
-    const value = def.values[rarity];
-    applyCard(this.gd, this.gun, this.run, {
-      type: 'runStat',
-      cardId,
-      rarity,
-      stat: def.stat,
-      mode: def.mode,
-      value,
-    });
-    this.run.picks.push({ kind: 'perk', cardId, rarity, stat: def.stat, mode: def.mode, value });
+  /** Training Ground: put an item (or nothing) in an equipment position. Extras are rolled. */
+  private setItem(slot: number, id: string | null, level: number): void {
+    this.run.equipment[slot] = id ? createItem(this.gd, id, level, this.rng) : null;
   }
 
   private openSlots(): boolean[] {
@@ -1202,11 +1294,7 @@ export class GameScene extends Phaser.Scene {
       layout: () => this.pipeline.layout,
       pipeline: () => this.pipeline,
       support: () => this.run.support,
-      perkCounts: () => {
-        const counts: Record<string, number> = {};
-        for (const p of this.run.picks) if (p.kind === 'perk') counts[p.cardId] = (counts[p.cardId] ?? 0) + 1;
-        return counts;
-      },
+      equipment: () => this.run.equipment,
       setGun: (id) => this.restartPlayground(id),
       setSlot: (i, slot, fuse) =>
         change(() => {
@@ -1231,16 +1319,17 @@ export class GameScene extends Phaser.Scene {
         change(() => {
           this.run.build.coreTier = tier;
         }),
-      addPerk: (cardId, rarity) => change(() => this.applyPerk(cardId, rarity)),
+      setItem: (slot, id, level) => change(() => this.setItem(slot, id, level)),
       resetBuild: () =>
         change(() => {
           this.run.build = buildForGun(this.gun);
         }),
       resetPerks: () =>
         change(() => {
-          this.run.runBonuses = emptyBonuses();
+          this.run.equipment = createEquipment(this.gd);
           this.run.support = startingSupport(this.gun);
           this.run.picks = [];
+          this.passives.reset();
         }),
       resetMeters: () => {
         pg().helper.meter.reset();
@@ -1296,7 +1385,9 @@ export class GameScene extends Phaser.Scene {
         ended: this.ended,
         level: this.progression.level,
         levelUpOpen: this.levelUpOpen,
+        chestOpen: this.chestOpen,
         cardsPicked: this.cardsPicked,
+        itemsTaken: this.itemsTaken,
         silver: this.run.silver,
         result: this.run.result,
       }),
@@ -1354,6 +1445,16 @@ export class GameScene extends Phaser.Scene {
         this.forcedHand = JSON.parse(JSON.stringify(cards));
       },
       support: () => ({ ...this.run.support }),
+      equipment: () => JSON.parse(JSON.stringify(this.run.equipment)),
+      setItem: (slot, id, level = 1) => {
+        this.setItem(slot, id, level);
+        this.refreshStats();
+      },
+      queueChest: (kind = 'supply') => {
+        this.chestQueue.push(kind);
+      },
+      chestChoices: () => JSON.parse(JSON.stringify(this.chestOpen ? this.chestChoices : [])),
+      stats: () => ({ ...this.stats }),
       pickups: () =>
         this.pickups.pickups
           .filter((p) => p.active)

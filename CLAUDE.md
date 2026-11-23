@@ -4,7 +4,9 @@ Top-down survivor roguelike in the browser: Phaser 4.2.1 + TypeScript (strict) +
 
 - Design: `docs/Svan and Gun — Game Design Document.md` (what the game does)
 - Architecture: `docs/Svan and Gun — Technical Design Document.md` (how it is built; follow it)
-- Task tracker: `docs/PHASE1_PLAN.md`. Tick tasks off there (and in the CSV) when done, add a dated note for any deviation.
+- Roadmap: `docs/ROADMAP.md` (Now / Next / Backlog / Open questions). Keep it current: mark work `[~]` when you start it, add new tasks and decisions, and update the Status table (tests, branch, date).
+- Changelog: `docs/CHANGELOG.md`. Every feature, design change or notable fix gets an entry (what, why, deviations from GDD/TDD, tests) under **Unreleased**; when it is merged to `main`, move it under that date. Once an item is in the changelog, delete it from the roadmap.
+- `docs/PHASE1_PLAN.md` and its CSV are archived; don't add to them.
 
 ## Commands
 

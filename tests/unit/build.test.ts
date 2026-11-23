@@ -19,13 +19,11 @@ import {
 } from '../../src/systems/build';
 import { modDef, mutationPairs } from '../../src/systems/fusion';
 import { layoutOf } from '../../src/systems/modPipeline';
-import { emptyBonuses } from '../../src/systems/stats';
 import { loadGameData } from '../helpers/loadData';
 
 const data = loadGameData();
 const target = (slots = 8): BuildTarget => ({
   build: createBuild(slots),
-  runBonuses: emptyBonuses(),
   support: {},
 });
 
@@ -187,36 +185,29 @@ describe('support perks, run stats and Core Tier', () => {
     ).toBe(false);
   });
 
-  it('run stat cards carry the value for their rarity', () => {
-    const rng = new RNG(4);
-    const seen = new Set<string>();
-    for (let i = 0; i < 300; i++) {
-      for (const c of drawCards(data, createBuild(), 30, rng)) {
-        if (c.type !== 'runStat') continue;
-        const def = data.cards.runStats.find((r) => r.id === c.cardId)!;
-        expect(c.value).toBe(def.values[c.rarity]);
-        seen.add(c.rarity);
-      }
-    }
-    expect(seen).toEqual(new Set(['common', 'rare', 'epic']));
-  });
-
   it('Core Tier is offered only below the max', () => {
     const build = createBuild();
     build.coreTier = data.config.slots.maxCoreTier;
     expect(candidateCards(data, build).some(([c]) => c.type === 'coreTier')).toBe(false);
   });
 
-  it('perks are a real option: most hands early in a run include one', () => {
+  it('support perks are a real option: a good share of Gunsmith hands include one', () => {
     const rng = new RNG(11);
     let withPerk = 0;
     for (let i = 0; i < 400; i++) {
-      if (
-        drawCards(data, createBuild(), 2, rng).some((c) => c.type === 'runStat' || c.type === 'supportPerk')
-      )
-        withPerk++;
+      const hand = drawCards(data, createBuild(), 2, rng, {}, undefined, 'gunsmith');
+      if (hand.some((c) => c.type === 'supportPerk')) withPerk++;
     }
     expect(withPerk / 400).toBeGreaterThan(0.4);
+  });
+
+  it('there are no run stat cards any more: run stats come from items', () => {
+    const rng = new RNG(4);
+    for (let i = 0; i < 200; i++)
+      for (const c of drawCards(data, createBuild(), 10, rng))
+        expect(['module', 'mutation', 'coreTier', 'supportPerk', 'muzzle', 'randomUpgrade']).toContain(
+          c.type,
+        );
   });
 });
 
@@ -258,8 +249,8 @@ describe('Tinker (random +1 tiers)', () => {
 describe('level-up paths', () => {
   const pathTypes = (id: string) => data.cards.paths.find((p) => p.id === id)!.types as readonly string[];
 
-  it('Favor of the Gods offers elements, Mutations and blessings; Gunsmith offers the rest', () => {
-    expect([...pathTypes('gods')].sort()).toEqual(['element', 'mutation', 'runStat']);
+  it('Favor of the Gods offers elements and Mutations; Gunsmith offers the rest', () => {
+    expect([...pathTypes('gods')].sort()).toEqual(['element', 'mutation']);
     expect(pathTypes('gunsmith')).toEqual(
       expect.arrayContaining(['grey', 'fitting', 'muzzle', 'supportPerk', 'coreTier', 'tinker']),
     );

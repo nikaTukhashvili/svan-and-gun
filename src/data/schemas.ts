@@ -33,8 +33,8 @@ export const StatIdSchema = z.enum([
 ]);
 /** "add": flat bonus (max HP +10). "mult": percentage bonus (fire rate +4%). */
 export const StatModeSchema = z.enum(['add', 'mult']);
-export const RaritySchema = z.enum(['common', 'rare', 'epic']);
-const byRarity = <T extends z.ZodType>(t: T) => z.strictObject({ common: t, rare: t, epic: t });
+/** Item rarity (GDD: Gear): follows from the item's level; legendaries are found only. */
+export const RaritySchema = z.enum(['common', 'magic', 'rare', 'legendary']);
 
 // ---------- config.json ----------
 
@@ -472,7 +472,6 @@ export const CardTypeSchema = z.enum([
   'grey',
   'fitting',
   'coreTier',
-  'runStat',
   'supportPerk',
   'muzzle',
   'tinker',
@@ -500,14 +499,13 @@ export const CardsSchema = z.strictObject({
   randomUpgrade: z.strictObject({ upgrades: posInt }),
   /**
    * Weight per card TYPE, shared by that type's cards (more modules in the game do not drown out
-   * perks). Tinker weighs the same as one run stat perk.
+   * perks).
    */
   typeWeights: z.strictObject({
     element: nonNeg,
     grey: nonNeg,
     fitting: nonNeg,
     coreTier: nonNeg,
-    runStat: nonNeg,
     supportPerk: nonNeg,
     muzzle: nonNeg,
     /** Tinker (random +1 tiers for barrel modules). */
@@ -517,22 +515,120 @@ export const CardsSchema = z.strictObject({
   }),
   /** A module card that would fuse with a module already in the barrel weighs this many times more. */
   upgradesOwnedMult: z.number().min(1),
-  rarity: z.strictObject({
-    weights: byRarity(nonNeg),
-    /** Added to the rare/epic weights per player level above 1. */
-    shiftPerLevel: z.strictObject({ rare: nonNeg, epic: nonNeg }),
+});
+
+// ---------- items.json (GDD: Gear) ----------
+
+/** Equipment slot kinds; the paper doll lists the positions (two of them are rings). */
+export const ItemSlotSchema = z.enum(['hat', 'cloak', 'chokha', 'ring', 'boots']);
+/** Stats an item can raise (not rerolls or revives: those are market only). */
+export const ItemStatSchema = StatIdSchema.exclude(['rerolls', 'revives']);
+
+/**
+ * What an item's number does: a player stat, or (element themes) the strength of that element's
+ * barrel modules and the hybrids made from it (+0.2 = their numbers ×1.2, like a fitting).
+ */
+export const ItemEffectSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('stat'), stat: ItemStatSchema, mode: StatModeSchema }),
+  z.strictObject({ kind: z.literal('element'), element: ElementSchema }),
+]);
+
+/** A levelled number: value(level) = base + perLevel × (level − 1). Fractions for "mult" (0.1 = +10%). */
+const levelled = { base: pos, perLevel: nonNeg };
+
+/** A main theme: it names the item ("Boots of Speed") and sets its main stat. */
+export const ItemThemeSchema = z.strictObject({
+  id: IdSchema,
+  name: z.string().min(1),
+  slot: ItemSlotSchema,
+  effect: ItemEffectSchema,
+  ...levelled,
+});
+
+/** An extra stat that Magic and Rare items roll (never the main theme's stat, never twice). */
+export const ItemExtraStatSchema = z.strictObject({
+  stat: ItemStatSchema,
+  mode: StatModeSchema,
+  ...levelled,
+});
+
+/**
+ * A legendary passive. Numbers grow with the item's level: base + perLevel × (level − 1); perLevel
+ * may be negative (a shorter charge), and a value never drops below 20% of its base. `tiers` is
+ * rounded. `description` uses {param} placeholders.
+ */
+const passive = <T extends string, K extends string>(type: T, keys: readonly K[]) =>
+  z.strictObject({
+    type: z.literal(type),
+    base: z.strictObject(Object.fromEntries(keys.map((k) => [k, pos])) as Record<K, typeof pos>),
+    perLevel: z.strictObject(Object.fromEntries(keys.map((k) => [k, z.number()])) as Record<K, z.ZodNumber>),
+  });
+
+export const LegendaryPassiveSchema = z.discriminatedUnion('type', [
+  /** After standing still for stillSec: +damagePct% damage until the Svan moves. */
+  passive('towerKeeper', ['stillSec', 'damagePct'] as const),
+  /** A kill gives +speedPct% move speed for durationSec. */
+  passive('wolfPelt', ['speedPct', 'durationSec'] as const),
+  /** Ember Shot and the fire hybrids count as `tiers` tiers higher. */
+  passive('emberSmith', ['tiers'] as const),
+  /** Every scrap pickup heals `heal` HP. */
+  passive('feast', ['heal'] as const),
+  /** Moving for chargeSec charges the gun: the next shot pierces every enemy. */
+  passive('mountainRunner', ['chargeSec'] as const),
+]);
+
+export const LegendarySchema = z.strictObject({
+  id: IdSchema,
+  name: z.string().min(1),
+  slot: ItemSlotSchema,
+  /** A fixed main stat; legendaries roll no extra stats. */
+  main: z.strictObject({ effect: ItemEffectSchema, ...levelled }),
+  passive: LegendaryPassiveSchema,
+  description: z.string().min(1),
+});
+
+/** A chest kind: which level its new items are found at, and how likely a legendary choice is. */
+const ChestKindSchema = z.strictObject({
+  levels: z.array(z.strictObject({ level: posInt, weight: pos })).min(1),
+  legendaryChance: unit01,
+});
+
+export const ItemsSchema = z.strictObject({
+  /** The paper doll's positions in order (GDD: Gear). */
+  equipment: z.array(ItemSlotSchema).min(1),
+  slotNames: z.strictObject({
+    hat: z.string(),
+    cloak: z.string(),
+    chokha: z.string(),
+    ring: z.string(),
+    boots: z.string(),
   }),
-  runStats: z
-    .array(
-      z.strictObject({
-        id: IdSchema,
-        name: z.string().min(1),
-        stat: StatIdSchema,
-        mode: StatModeSchema,
-        values: byRarity(pos),
-      }),
-    )
-    .min(1),
+  /** Rarity follows from the level: an extra stat is rolled on reaching each of these levels. */
+  extraStatLevels: z.array(posInt).min(1),
+  themes: z.array(ItemThemeSchema).min(1),
+  extraStats: z.array(ItemExtraStatSchema).min(2),
+  legendaries: z.array(LegendarySchema),
+  chests: z.strictObject({
+    /** Choices offered when a chest is opened. */
+    choices: posInt,
+    /** Weight of an "upgrade one of your items" choice against a new item. */
+    upgradeWeight: nonNeg,
+    newItemWeight: nonNeg,
+    supply: ChestKindSchema,
+    elite: ChestKindSchema,
+  }),
+  /** A replaced item is salvaged into scrap: base + perLevel × (level − 1). */
+  salvageScrap: z.strictObject(levelled),
+  /** Supply chests that appear on the map during a run. */
+  supplyChest: z.strictObject({
+    firstSec: pos,
+    intervalSec: pos,
+    /** No supply chests after this time (the boss fight). */
+    untilSec: pos,
+    /** Spawn distance from the player, in units. */
+    minDistance: pos,
+    maxDistance: pos,
+  }),
 });
 
 // ---------- buffs.json ----------
