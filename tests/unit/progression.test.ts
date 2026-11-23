@@ -3,6 +3,7 @@ import { EventBus } from '../../src/core/eventBus';
 import type { GameEvents } from '../../src/core/events';
 import { RNG } from '../../src/core/rng';
 import { Destructibles } from '../../src/systems/destructibles';
+import { chestValue } from '../../src/systems/items';
 import { PickupSystem, rollEnemyDrops, scrapSize } from '../../src/systems/pickups';
 import { Progression, scrapToNext, totalScrapFor } from '../../src/systems/progression';
 import { loadGameData } from '../helpers/loadData';
@@ -63,14 +64,14 @@ describe('pickups', () => {
     expect(merged.x).toBe(500);
   });
 
-  it('enemies drop scrap by type; elites also drop a chest and silver', () => {
+  it('enemies drop scrap by type; elites also drop an elite chest and silver', () => {
     const rng = new RNG(1);
     expect(rollEnemyDrops(data.drops, rng, 'devi_brute', false)[0]).toEqual({ kind: 'scrap', value: 8 });
     const elite = rollEnemyDrops(data.drops, rng, 'ali', true);
     expect(elite).toEqual(
       expect.arrayContaining([
         { kind: 'scrap', value: 10 },
-        { kind: 'chest', value: 1 },
+        { kind: 'chest', value: chestValue('elite') },
         { kind: 'silver', value: 10 },
       ]),
     );

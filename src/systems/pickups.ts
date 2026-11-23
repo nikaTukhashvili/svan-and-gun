@@ -1,10 +1,11 @@
 /**
- * Map pickups (T16, T24): scrap, silver, Kubdari, Hunting Horn, Gunsmith's Chest.
+ * Map pickups (T16, T24): scrap, silver, Kubdari, Hunting Horn, chests (value = chest kind, systems/items).
  * Inside the pickup radius they fly to the player, then are collected on touch.
  * Above `mergeThreshold` scrap pieces, new scrap merges into the nearest piece (TDD: Performance).
  */
 import type { RNG } from '../core/rng';
 import type { DropsDef } from '../data/types';
+import { chestValue } from './items';
 
 export type PickupKind = 'scrap' | 'silver' | 'kubdari' | 'horn' | 'chest';
 
@@ -130,7 +131,7 @@ export function rollEnemyDrops(drops: DropsDef, rng: RNG, enemyId: string, elite
   const scrap = (drops.scrapByEnemy[enemyId] ?? 1) * (elite ? drops.eliteScrapMult : 1);
   out.push({ kind: 'scrap', value: scrap });
   if (elite) {
-    out.push({ kind: 'chest', value: 1 });
+    out.push({ kind: 'chest', value: chestValue('elite') });
     if (drops.silver.elite > 0) out.push({ kind: 'silver', value: drops.silver.elite });
   } else if (rng.chance(drops.silver.killChance)) {
     out.push({ kind: 'silver', value: drops.silver.perPickup });

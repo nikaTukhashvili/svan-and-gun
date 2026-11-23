@@ -280,12 +280,12 @@ Items last for one run, like everything except silver.
 | Slot | Leans towards | Example themes |
 | --- | --- | --- |
 | Boots | Movement | Boots of Speed, Boots of Pursuit (pickup radius) |
-| Chokha | Toughness, elements | Iron Chokha (armour), Lightning Chokha, Ember Chokha, Venom Chokha |
+| Chokha | Toughness, elements | Iron Chokha (armour), Lightning Chokha, Ember Chokha, Venom Chokha, Frost Chokha |
 | Svan Hat | Growth, utility | Hunter's Hat (scrap gain), Hat of Focus (reload speed) |
 | Ring (×2) | Offence | Ring of Fury (damage), Quick Ring (fire rate), Far Ring (bullet speed) |
 | Cloak | Survival | Cloak of the Hearth (HP regen), Wolf Cloak (max HP) |
 
-- **Element themes** (Ember, Venom, Lightning) strengthen that element's barrel modules and their hybrids (for example +20% lightning chain damage and Plasma arcs). Gear then nudges which modules the player goes for.
+- **Element themes** (Ember, Venom, Lightning, Frost) strengthen that element's barrel modules and their hybrids, like a fitting does (+20% = their numbers ×1.2; Plasma gets both the fire and the lightning bonus). Gear then nudges which modules the player goes for.
 - Extra stats are drawn from the general stat list (move speed, damage, fire rate, reload speed, bullet speed, pickup radius, max HP, HP regen, armour, scrap gain), never the same stat as the main theme.
 - All themes, stats and numbers live in data (`items.json`), so they can be tuned in the Training Ground.
 
@@ -299,7 +299,7 @@ Items last for one run, like everything except silver.
 
 There is no level cap: a run is about 6 minutes, so few items should go past level 8. A found Magic item starts at level 3 and a found Rare at level 5, so finding one and upgrading one are the same thing.
 
-**Legendaries** are named items with a fixed main stat and a **passive** that changes how the player plays. They are only found (never made by upgrading), start at level 1 with their passive, and levelling one also makes the passive stronger. First ideas:
+**Legendaries** are named items with a fixed main stat and a **passive** that changes how the player plays. They are only found (never made by upgrading), start at level 1 with their passive and no extra stats, and levelling one also makes the passive stronger. Built (2026-11-22):
 
 | Legendary | Slot | Passive |
 | --- | --- | --- |
@@ -313,9 +313,9 @@ There is no level cap: a run is about 6 minutes, so few items should go past lev
 
 | Source | When | What it gives |
 | --- | --- | --- |
-| Elite | Every elite (2:00, 4:00) | A chest, at least Magic |
-| Supply chest on the map | Spawns about every 45 s at a random spot | A chest |
-| Boss | On death | A chest with a Legendary choice |
+| Elite | Every elite (2:00, 4:00) | A chest, at least Magic; 25% chance of a Legendary choice |
+| Supply chest on the map | Every 45 s from 0:45 until the boss, 6–12 units from the player | A chest; 4% chance of a Legendary choice |
+| Boss | On death | Not built: the run ends when the boss dies, so a chest there could not be used. Legendaries come from elites and supply chests instead (2026-11-22) |
 
 Aim for 8–10 chests in a full run: enough to fill the 6 slots and still upgrade a few.
 
@@ -324,9 +324,11 @@ Aim for 8–10 chests in a full run: enough to fill the 6 slots and still upgrad
 - While a slot is empty, at least one choice is a new item for an empty slot.
 - Each choice is either a **new item** (with a compare view against the one in that slot) or an **upgrade**: one of the player's items +1 level.
 - Once every slot is full, chests keep their purpose through upgrades, so a late chest always improves something the player already owns.
-- An item that is replaced is salvaged into scrap (open question: or silver).
+- An item that is replaced is salvaged into scrap: 5 + 5 per level above 1.
+- A chest has its own screen (not the level-up path flow). Level-ups queued at the same time are shown first.
+- A second ring goes into the empty ring slot; with both full, a new ring replaces the weaker one.
 
-**Build sheet (C)** shows a paper doll with the 6 equipment slots (built 2026-11-21, empty until items exist), stats, blessings, magazine work, and the gun drawn as core → barrel → muzzle. Items will show their level, rarity and stats there.
+**Build sheet (C)** shows a paper doll with the 6 equipment slots (name, level, rarity colour), each item's stats and passive, the stats, Tinker picks, magazine work, and the gun drawn as core → barrel → muzzle. The HUD shows legendary passives at work (Tower Keeper bonus, Wolf Pelt burst, Mountain Runner charge).
 
 ## In-run progression and roguelike elements
 
@@ -334,11 +336,11 @@ Killed enemies drop **scrap** (XP). Each full scrap bar is a level-up: the game 
 
 | Path | Offers |
 | --- | --- |
-| **Favor of the Gods** | Elements (Ember Shot, Venom Shot, Thunder Spark, Frost Shot), **Mutation** (two maxed elements → their hybrid, offered only when possible) and **blessings** (the run stat cards: +move speed, +max HP…; they move onto items once items exist) |
+| **Favor of the Gods** | Elements (Ember Shot, Venom Shot, Thunder Spark, Frost Shot) and **Mutation** (two maxed elements → their hybrid, offered only when possible). The blessings (run stat cards) were removed on 2026-11-22: run stats come from items |
 | **Gunsmith** | Grey barrel modules, fittings, muzzle pieces, magazine work (the support perks), Core Tier, Tinker |
 
 - Choosing a path is a commitment for that level-up: there is no going back to look at the other path. The reroll redraws the 3 cards within the chosen path.
-- Chests use the same flow (path, then card).
+- Chests do not use this flow: they open the gear screen (see Gear).
 - Paths and which card types they hold live in `cards.json > paths`. Everything gained in a run is lost when it ends, except silver.
 
 **Level-up cards** (3 are drawn from the chosen path's types; only valid ones appear):

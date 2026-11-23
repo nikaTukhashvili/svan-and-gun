@@ -11,6 +11,7 @@ import { MarketScene } from './scenes/MarketScene';
 import { MenuScene } from './scenes/MenuScene';
 import { SettingsScene } from './scenes/SettingsScene';
 import { BuildSheetScene } from './scenes/BuildSheetScene';
+import { ChestScene } from './scenes/ChestScene';
 import { PauseScene } from './scenes/PauseScene';
 import { ResultsScene } from './scenes/ResultsScene';
 
@@ -39,6 +40,7 @@ const config: Phaser.Types.Core.GameConfig = {
     GameScene,
     HudScene,
     LevelUpScene,
+    ChestScene,
     PauseScene,
     ResultsScene,
     BuildSheetScene,

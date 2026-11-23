@@ -154,7 +154,7 @@ describe('the muzzle on the gun', () => {
 });
 
 describe('muzzle cards', () => {
-  const t = (): BuildTarget => ({ build: createBuild(8, 3), runBonuses: emptyBonuses(), support: {} });
+  const t = (): BuildTarget => ({ build: createBuild(8, 3), support: {} });
 
   it('every piece is offered, marked when the gun already has it (can upgrade)', () => {
     const target = t();

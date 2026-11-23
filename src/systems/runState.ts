@@ -3,13 +3,10 @@
  * the results screen turns it into score, silver and a high-score entry (TDD: Scenes).
  */
 import type { RunResult } from '../core/events';
-import type { Rarity, StatId, StatMode } from '../data/types';
 import { createBuild, type RunBuild, type SupportLevels } from './build';
-import { emptyBonuses, type StatBonuses } from './stats';
+import type { Equipment } from './items';
 
-export type RunPick =
-  | { kind: 'perk'; cardId: string; rarity: Rarity; stat: StatId; mode: StatMode; value: number }
-  | { kind: 'tinker'; upgrades: { slot: number; modId: string }[] };
+export type RunPick = { kind: 'tinker'; upgrades: { slot: number; modId: string }[] };
 
 export interface RunState {
   readonly seed: number;
@@ -22,12 +19,12 @@ export interface RunState {
   /** Silver picked up during the run (bonuses are added at the results screen). */
   silver: number;
   timeSec: number;
-  /** Run stat cards and other run-only bonuses. */
-  runBonuses: StatBonuses;
+  /** Items worn (GDD: Gear), one entry per paper-doll position. Run stats come from these. */
+  equipment: Equipment;
   /** Support perks taken (were magazine mods): id → level. */
   support: SupportLevels;
   rerollsUsed: number;
-  /** Perks (run stat cards) and Tinker picks, in the order they were chosen (build sheet). */
+  /** Tinker picks, in the order they were chosen (build sheet). */
   picks: RunPick[];
   result: RunResult | null;
 }
@@ -42,7 +39,7 @@ export function createRunState(gunId: string, seed: number): RunState {
     bossKilled: false,
     silver: 0,
     timeSec: 0,
-    runBonuses: emptyBonuses(),
+    equipment: [],
     support: {},
     rerollsUsed: 0,
     picks: [],

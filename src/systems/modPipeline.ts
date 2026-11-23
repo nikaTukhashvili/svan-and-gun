@@ -22,7 +22,7 @@
  * The pellet rule still holds: on-hit modules trigger once per enemy per volley (firstOfVolley).
  */
 import { degToRad, u } from '../core/math';
-import type { GameData, GunDef, TieredModDef } from '../data/types';
+import type { Element, GameData, GunDef, TieredModDef } from '../data/types';
 import type { Bullet, BulletSystem } from './bullets';
 import type { RunBuild, SupportLevels } from './build';
 import type { Enemy, EnemySystem, HitHandler } from './enemies';
@@ -142,11 +142,27 @@ export function layoutOf(gun: GunDef | null, barrelSlots: number): BarrelLayout 
 export const chainOfSlot = (layout: BarrelLayout, slot: number): number =>
   Math.floor(slot / layout.slotsPerChain);
 
+/** What gear adds to the barrel (GDD: Gear). */
+export interface PipelineBoosts {
+  /** Element themes: strength bonus for that element's modules and the hybrids made from it. */
+  elements?: Partial<Record<Element, number>>;
+  /** Ring of the Ember Smith: fire modules count as this many tiers higher. */
+  fireTiers?: number;
+}
+
+/** The elements a module belongs to (none for grey modules and fittings). */
+function elementsOf(def: TieredModDef): readonly Element[] {
+  if (def.family === 'element') return [def.element];
+  if (def.family === 'hybrid') return def.parents;
+  return [];
+}
+
 export function buildPipeline(
   data: GameData,
   build: RunBuild,
   gun: GunDef | null = null,
   support: SupportLevels = {},
+  boosts: PipelineBoosts = {},
 ): Pipeline {
   const layout = layoutOf(gun, build.barrel.length);
   const strength = build.barrel.map(() => 1);
@@ -178,12 +194,16 @@ export function buildPipeline(
     const last = i === layout.slots - 1;
     const critOnly = last && layout.critChamberMult > 0;
     if (critOnly) strength[i]! *= layout.critChamberMult;
+    const els = elementsOf(def);
+    const elementBonus = els.reduce((sum, el) => sum + (boosts.elements?.[el] ?? 0), 0);
+    if (elementBonus !== 0) strength[i]! *= 1 + elementBonus;
+    const tier = slot.tier + (els.includes('fire') ? (boosts.fireTiers ?? 0) : 0);
     barrel.push({
       slot: i,
       chain: chainOfSlot(layout, i),
       id: def.id,
-      tier: slot.tier,
-      p: tierParams(def, slot.tier),
+      tier,
+      p: tierParams(def, tier),
       k: Math.max(0, strength[i]!),
       critOnly,
     } as SlotMod);

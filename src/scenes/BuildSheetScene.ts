@@ -13,15 +13,18 @@ export interface SheetLine {
   color?: string;
 }
 
-/** One equipment slot on the paper doll. `item` stays null until the item system exists. */
+/** One equipment slot on the paper doll; `item` is null while the slot is empty. */
 export interface EquipmentView {
   slot: string;
-  item: { name: string; color: string } | null;
+  /** `color`: rarity colour (CSS); `detail`: "Lv 4 · Magic". */
+  item: { name: string; color: string; detail: string } | null;
 }
 
 export interface BuildSheetData {
-  /** Blessings and Tinker picks. */
-  perks: SheetLine[];
+  /** Items worn, one line each with their stats (GDD: Gear). */
+  gear: SheetLine[];
+  /** Tinker picks. */
+  tinker: SheetLine[];
   /** Support perks (magazine work). */
   support: SheetLine[];
   stats: SheetLine[];
@@ -29,12 +32,6 @@ export interface BuildSheetData {
   gun: { name: string; build: RunBuild; layout: BarrelLayout; strength: number[] };
   close: () => void;
 }
-
-/**
- * The equipment slots, in paper-doll order (GDD: Gear). Shown empty until items are built; the item
- * system will fill `BuildSheetData.equipment`.
- */
-export const EQUIPMENT_SLOTS = ['Svan Hat', 'Cloak', 'Chokha', 'Ring', 'Ring', 'Boots'] as const;
 
 const FONT = 'system-ui, sans-serif';
 const GUN_Y = 610;
@@ -65,13 +62,15 @@ export class BuildSheetScene extends Phaser.Scene {
 
     this.drawEquipment(230, 100);
 
-    this.title(470, 90, 'STATS (base → now)');
-    this.column(470, 118, this.sheet.stats, '', 26);
+    this.title(450, 90, 'STATS (base → now)');
+    this.column(450, 118, this.sheet.stats, '', 10);
 
-    this.title(850, 90, 'BLESSINGS AND TINKER');
-    const perksEnd = this.column(850, 118, this.sheet.perks, 'None yet.', 22);
-    this.title(850, perksEnd + 18, 'MAGAZINE WORK');
-    this.column(850, perksEnd + 46, this.sheet.support, 'None yet.', 22);
+    this.title(800, 90, 'GEAR');
+    const gearEnd = this.column(800, 114, this.sheet.gear, 'Nothing yet: open chests.', 4, 13, 450);
+    this.title(800, gearEnd + 12, 'TINKER');
+    const tinkerEnd = this.column(800, gearEnd + 36, this.sheet.tinker, 'None yet.', 4, 13, 450);
+    this.title(800, tinkerEnd + 12, 'MAGAZINE WORK');
+    this.column(800, tinkerEnd + 36, this.sheet.support, 'None yet.', 4, 13, 450);
 
     this.drawGun();
 
@@ -96,8 +95,8 @@ export class BuildSheetScene extends Phaser.Scene {
     g.fillRect(cx - 30, top + 232, 22, 92); // legs
     g.fillRect(cx + 8, top + 232, 22, 92);
 
-    const w = 120;
-    const h = 58;
+    const w = 130;
+    const h = 70;
     const at: [number, number][] = [
       [cx, top + 40], // Svan Hat
       [cx - 125, top + 150], // Cloak
@@ -108,21 +107,23 @@ export class BuildSheetScene extends Phaser.Scene {
     ];
     const items = this.sheet.equipment;
     at.forEach(([x, y], i) => {
-      const e = items[i] ?? { slot: EQUIPMENT_SLOTS[i] ?? '', item: null };
+      const e = items[i];
+      if (!e) return;
       const color = e.item ? parseInt(e.item.color.slice(1), 16) : 0x3a404b;
-      this.add.rectangle(x, y, w, h, e.item ? color : 0x16191e, e.item ? 0.3 : 1).setStrokeStyle(2, color);
-      this.text(x, y - 13, e.slot.toUpperCase(), 11, UiColors.textDim, 'bold').setOrigin(0.5);
+      this.add.rectangle(x, y, w, h, 0x16191e, 1).setStrokeStyle(2, color);
+      this.text(x, y - h / 2 + 8, e.slot.toUpperCase(), 10, UiColors.textDim, 'bold').setOrigin(0.5);
       this.text(
         x,
-        y + 8,
+        y + 2,
         e.item ? e.item.name : 'empty',
-        13,
+        12,
         e.item ? UiColors.text : '#5b6270',
         e.item ? 'bold' : 'normal',
       )
         .setOrigin(0.5)
         .setWordWrapWidth(w - 8)
         .setAlign('center');
+      if (e.item) this.text(x, y + h / 2 - 9, e.item.detail, 10, e.item.color).setOrigin(0.5);
     });
   }
 
@@ -215,14 +216,23 @@ export class BuildSheetScene extends Phaser.Scene {
     return this.text(x, y, s, 14, UiColors.textDim, 'bold');
   }
 
-  /** Lines one under another; returns the y below the last line. */
-  private column(x: number, y: number, lines: SheetLine[], empty: string, step: number): number {
-    if (lines.length === 0) {
-      if (empty) this.text(x, y, empty, 15, UiColors.textDim);
-      return y + step;
+  /** Lines one under another (`gap` px between them, wrapped at `wrap`); returns the y below the last. */
+  private column(
+    x: number,
+    y: number,
+    lines: SheetLine[],
+    empty: string,
+    gap: number,
+    size = 15,
+    wrap = 0,
+  ): number {
+    const all = lines.length === 0 ? (empty ? [{ text: empty, color: UiColors.textDim }] : []) : lines;
+    for (const l of all) {
+      const t = this.text(x, y, l.text, size, l.color ?? UiColors.text);
+      if (wrap > 0) t.setWordWrapWidth(wrap);
+      y += t.height + gap;
     }
-    lines.forEach((l, i) => this.text(x, y + i * step, l.text, 15, l.color ?? UiColors.text));
-    return y + lines.length * step;
+    return y;
   }
 
   private text(

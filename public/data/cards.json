@@ -5,9 +5,9 @@
     {
       "id": "gods",
       "name": "Favor of the Gods",
-      "description": "Elements, Mutations into hybrids, and blessings for this run.",
+      "description": "Elements, and Mutations that turn two maxed elements into their hybrid.",
       "color": "#f2d23a",
-      "types": ["element", "runStat", "mutation"]
+      "types": ["element", "mutation"]
     },
     {
       "id": "gunsmith",
@@ -25,134 +25,10 @@
     "grey": 3,
     "fitting": 1.5,
     "coreTier": 1.5,
-    "runStat": 3,
     "supportPerk": 2,
     "muzzle": 2,
     "tinker": 1,
     "mutation": 4
   },
-  "rarity": {
-    "weights": {
-      "common": 70,
-      "rare": 25,
-      "epic": 5
-    },
-    "shiftPerLevel": {
-      "rare": 0.8,
-      "epic": 0.3
-    }
-  },
-  "runStats": [
-    {
-      "id": "rs_move_speed",
-      "name": "Light Boots",
-      "stat": "moveSpeed",
-      "mode": "mult",
-      "values": {
-        "common": 0.1,
-        "rare": 0.15,
-        "epic": 0.25
-      }
-    },
-    {
-      "id": "rs_damage",
-      "name": "Sharper Lead",
-      "stat": "damage",
-      "mode": "mult",
-      "values": {
-        "common": 0.1,
-        "rare": 0.15,
-        "epic": 0.25
-      }
-    },
-    {
-      "id": "rs_fire_rate",
-      "name": "Oiled Action",
-      "stat": "fireRate",
-      "mode": "mult",
-      "values": {
-        "common": 0.08,
-        "rare": 0.12,
-        "epic": 0.2
-      }
-    },
-    {
-      "id": "rs_reload_speed",
-      "name": "Steady Hands",
-      "stat": "reloadSpeed",
-      "mode": "mult",
-      "values": {
-        "common": 0.1,
-        "rare": 0.15,
-        "epic": 0.25
-      }
-    },
-    {
-      "id": "rs_bullet_speed",
-      "name": "Hot Powder",
-      "stat": "bulletSpeed",
-      "mode": "mult",
-      "values": {
-        "common": 0.1,
-        "rare": 0.15,
-        "epic": 0.25
-      }
-    },
-    {
-      "id": "rs_pickup_radius",
-      "name": "Scrap Magnet",
-      "stat": "pickupRadius",
-      "mode": "mult",
-      "values": {
-        "common": 0.2,
-        "rare": 0.3,
-        "epic": 0.5
-      }
-    },
-    {
-      "id": "rs_max_hp",
-      "name": "Thick Coat",
-      "stat": "maxHp",
-      "mode": "add",
-      "values": {
-        "common": 15,
-        "rare": 25,
-        "epic": 40
-      }
-    },
-    {
-      "id": "rs_hp_regen",
-      "name": "Mountain Air",
-      "stat": "hpRegen",
-      "mode": "add",
-      "values": {
-        "common": 0.3,
-        "rare": 0.5,
-        "epic": 0.8
-      }
-    },
-    {
-      "id": "rs_defence",
-      "name": "Felt Cloak",
-      "stat": "defence",
-      "mode": "add",
-      "values": {
-        "common": 1,
-        "rare": 2,
-        "epic": 3
-      }
-    },
-    {
-      "id": "rs_scrap_gain",
-      "name": "Keen Eye",
-      "stat": "scrapGain",
-      "mode": "mult",
-      "values": {
-        "common": 0.1,
-        "rare": 0.15,
-        "epic": 0.25
-      }
-    }
-  ],
   "upgradesOwnedMult": 3
 }

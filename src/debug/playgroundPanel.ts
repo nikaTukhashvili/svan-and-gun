@@ -2,19 +2,21 @@
  * Training Ground panel (dev tool): a plain HTML panel docked to the left of the game
  * (the dummies stand to the right of the player).
  * Set the gun, every barrel slot (module + tier + order), the muzzle (piece + level), Core Tier,
- * perks and support perks;
+ * items (gear) and support perks;
  * reset things; spawn enemies;
  * read the DPS meter. It only talks to a PlaygroundController, never to Phaser.
  *
  * Only dropdowns, buttons and checkboxes, and each control gives focus back after a change,
  * so WASD and other keys keep going to the game.
  */
-import type { GameData, Rarity } from '../data/types';
+import type { GameData } from '../data/types';
 import type { ModSlot, RunBuild, SupportLevels } from '../systems/build';
 import type { DpsStats } from '../systems/dpsMeter';
+import { itemSlotKind, slotName, type Equipment } from '../systems/items';
 import type { BarrelLayout, Pipeline } from '../systems/modPipeline';
 import type { MuzzleSlot } from '../systems/muzzle';
 import { barrelSlotTag, modDescription, muzzleDescription, muzzleEffects } from '../ui/cardText';
+import { itemSummary } from '../ui/itemText';
 
 export interface PlaygroundController {
   readonly data: GameData;
@@ -24,8 +26,8 @@ export interface PlaygroundController {
   /** Fittings and per-slot strength. */
   pipeline(): Pipeline;
   support(): Readonly<SupportLevels>;
-  /** Times each run stat perk was taken. */
-  perkCounts(): Readonly<Record<string, number>>;
+  /** Items worn, one per paper-doll position. */
+  equipment(): Readonly<Equipment>;
   setGun(id: string): void;
   /** `fuse`: place it like a card (upgrade the same module / insert); otherwise set it exactly. */
   setSlot(index: number, slot: ModSlot | null, fuse: boolean): void;
@@ -33,7 +35,8 @@ export interface PlaygroundController {
   /** Put a muzzle piece (or nothing) in a muzzle slot. */
   setMuzzle(index: number, slot: MuzzleSlot | null): void;
   setCoreTier(tier: number): void;
-  addPerk(cardId: string, rarity: Rarity): void;
+  /** Put an item (theme or legendary id) at a level in a paper-doll position; null empties it. */
+  setItem(slot: number, id: string | null, level: number): void;
   setSupport(id: string, level: number): void;
   resetBuild(): void;
   resetPerks(): void;
@@ -234,19 +237,33 @@ export class PlaygroundPanel {
     );
     sections.push(el('div', { class: 'row' }, tierSel));
 
-    // Perks
-    const counts = this.ctl.perkCounts();
-    const grid = el('div', { class: 'grid' });
-    for (const rs of d.cards.runStats) {
-      const n = counts[rs.id] ?? 0;
-      grid.append(el('span', { title: rs.stat }, rs.name), el('span', { class: 'dim' }, n ? `×${n}` : ''));
-      for (const rarity of ['common', 'rare', 'epic'] as const) {
-        const b = this.button(`+${rarity[0]!.toUpperCase()}`, () => this.ctl.addPerk(rs.id, rarity));
-        b.title = `${rarity}: ${rs.mode === 'mult' ? '+' + Math.round(rs.values[rarity] * 100) + '%' : '+' + rs.values[rarity]} ${rs.stat}`;
-        grid.append(b);
-      }
-    }
-    sections.push(el('h3', {}, 'Perks'), grid);
+    // Items: one row per paper-doll position (theme or legendary, level)
+    const itemRows: Node[] = [];
+    this.ctl.equipment().forEach((item, i) => {
+      const kind = d.items.equipment[i]!;
+      const options: [string, string][] = [
+        ['', `— ${slotName(d, i)} —`],
+        ...d.items.themes.filter((t) => t.slot === kind).map((t): [string, string] => [t.id, t.name]),
+        ...d.items.legendaries
+          .filter((l) => l.slot === kind)
+          .map((l): [string, string] => [l.id, `★ ${l.name}`]),
+      ];
+      const sel = this.select(options, item?.id ?? '', (v) =>
+        this.ctl.setItem(i, v || null, item?.level ?? 1),
+      );
+      sel.classList.add('mod');
+      sel.dataset.testid = `playground-item-${i}`;
+      if (item) sel.title = itemSummary(d, item);
+      const lv = this.select(
+        levels.map((t) => [t, 'Lv ' + t]),
+        String(item?.level ?? 1),
+        (v) => item && itemSlotKind(d, item.id) === kind && this.ctl.setItem(i, item.id, Number(v)),
+      );
+      lv.disabled = !item;
+      itemRows.push(el('div', { class: 'row' }, sel, lv));
+      if (item) itemRows.push(el('div', { class: 'dim' }, itemSummary(d, item)));
+    });
+    sections.push(el('h3', {}, 'Items (extras re-roll on change)'), ...itemRows);
 
     // Support perks: level 0..max
     const support = this.ctl.support();
@@ -270,7 +287,7 @@ export class PlaygroundPanel {
         'div',
         { class: 'buttons' },
         this.button('Reset build', () => this.ctl.resetBuild(), 'playground-reset-build'),
-        this.button('Reset perks', () => this.ctl.resetPerks()),
+        this.button('Reset items and perks', () => this.ctl.resetPerks()),
         this.button('Reset meters', () => this.ctl.resetMeters(), 'playground-reset-meters'),
         this.button('Respawn dummies', () => this.ctl.respawnDummies()),
         this.button('Clear enemies', () => this.ctl.clearEnemies()),

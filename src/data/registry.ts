@@ -19,6 +19,7 @@ import {
   DropsSchema,
   EnemiesSchema,
   GunsSchema,
+  ItemsSchema,
   SupportPerksSchema,
   MapSchema,
   MuzzlesSchema,
@@ -46,6 +47,7 @@ const fileSchemas = {
   boss: BossSchema,
   timeline: TimelineSchema,
   cards: CardsSchema,
+  items: ItemsSchema,
   buffs: BuffsSchema,
   drops: DropsSchema,
   playground: PlaygroundSchema,
@@ -117,7 +119,8 @@ function crossCheck(d: Parsed & { maps: Record<string, MapDef> }): string[] {
     ['barrelMods + muzzles', [...d.barrelMods.map((m) => m.id), ...d.muzzles.pieces.map((m) => m.id)]],
     ['enemies', d.enemies.map((e) => e.id)],
     ['buffs', d.buffs.map((b) => b.id)],
-    ['cards.runStats', d.cards.runStats.map((c) => c.id)],
+    // Themes and legendaries are both item ids.
+    ['items', [...d.items.themes.map((t) => t.id), ...d.items.legendaries.map((l) => l.id)]],
   ] as const) {
     for (const id of duplicates(ids)) p.push(`${file}.json: duplicate id "${id}"`);
   }
@@ -149,6 +152,32 @@ function crossCheck(d: Parsed & { maps: Record<string, MapDef> }): string[] {
   for (const type of Object.keys(d.cards.typeWeights)) {
     const n = d.cards.paths.filter((x) => x.types.includes(type as never)).length;
     if (n !== 1) p.push(`cards.json > paths: card type "${type}" must be in exactly one path, found ${n}`);
+  }
+
+  // Items: every slot kind has themes; extra stats are distinct and leave room for each theme;
+  // extra-stat levels ascend; chest levels and supply distances make sense; legendary text fills.
+  const it = d.items;
+  for (const kind of new Set(it.equipment))
+    if (!it.themes.some((t) => t.slot === kind)) p.push(`items.json > themes: no theme for slot "${kind}"`);
+  const extraKey = (stat: string, mode: string) => `${stat}:${mode}`;
+  for (const k of duplicates(it.extraStats.map((e) => extraKey(e.stat, e.mode))))
+    p.push(`items.json > extraStats: "${k}" is listed twice`);
+  const maxExtras = it.extraStatLevels.length;
+  for (const t of [...it.themes, ...it.legendaries.map((l) => ({ id: l.id, effect: l.main.effect }))]) {
+    const own = t.effect.kind === 'stat' ? extraKey(t.effect.stat, t.effect.mode) : '';
+    if (it.extraStats.filter((e) => extraKey(e.stat, e.mode) !== own).length < maxExtras)
+      p.push(`items.json > ${t.id}: not enough extra stats other than its main stat`);
+  }
+  if (!it.extraStatLevels.every((x, i) => i === 0 || x > it.extraStatLevels[i - 1]!))
+    p.push('items.json > extraStatLevels: must be strictly ascending');
+  if (it.supplyChest.minDistance > it.supplyChest.maxDistance)
+    p.push('items.json > supplyChest: minDistance is larger than maxDistance');
+  for (const l of it.legendaries) {
+    for (const key of placeholders(l.description))
+      if (!(key in l.passive.base))
+        p.push(`items.json > ${l.id}: description uses {${key}} but has no "${key}"`);
+    if (!it.equipment.includes(l.slot))
+      p.push(`items.json > ${l.id}: slot "${l.slot}" is not on the paper doll`);
   }
 
   // Muzzle pieces: perLevel only grows numbers the piece has.

@@ -28,7 +28,6 @@ export interface CardText {
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'];
 export const roman = (n: number): string => ROMAN[n] ?? String(n);
 
-const RARITY_COLORS = { common: 0x9aa0a6, rare: 0x3d8bfd, epic: 0xb455ff } as const;
 const CORE_COLOR = 0xe0533d;
 const SUPPORT_COLOR = 0x5fc46a;
 export const MUTATION_COLOR = 0xf2d23a;
@@ -209,16 +208,6 @@ export function describeCard(data: GameData, card: Card): CardText {
             : `${card.upgrades.length} random +1 tiers for modules in your barrel (the same one can get more than one).`,
         color: 0x5bc0be,
       };
-    case 'runStat': {
-      const def = data.cards.runStats.find((r) => r.id === card.cardId)!;
-      const value = card.mode === 'mult' ? `+${pct(card.value)}` : `+${card.value}`;
-      return {
-        label: `BLESSING · ${card.rarity.toUpperCase()}`,
-        name: def.name,
-        body: `${value} ${STAT_LABELS[card.stat] ?? card.stat} for this run.`,
-        color: RARITY_COLORS[card.rarity],
-      };
-    }
   }
 }
 
@@ -230,7 +219,6 @@ export function pathContents(data: GameData, path: CardPathDef): string[] {
   const names = (family: string) => data.barrelMods.filter((m) => m.family === family).map((m) => m.name);
   const line: Record<CardType, () => string> = {
     element: () => `Elements: ${few(names('element'), 4)}`,
-    runStat: () => 'Blessings: stats for this run',
     grey: () => `Barrel modules: ${few(names('grey'))}`,
     fitting: () => 'Fittings: boost their neighbours',
     muzzle: () => 'Muzzle pieces: trade-offs that stack',
